@@ -2,7 +2,7 @@ import uuid
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from enum import StrEnum
-from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
+from urllib.parse import parse_qsl, unquote, urlencode, urlsplit, urlunsplit
 
 
 class DuplicateSubscriptionError(ValueError):
@@ -16,8 +16,29 @@ class SubscriptionHealth(StrEnum):
     DISABLED = "disabled"
 
 
-def normalize_feed_url(value: str) -> str:
-    raw = value.strip()
+def _normalize_rsshub_locator(raw: str) -> str:
+    parsed = urlsplit(raw)
+    if not parsed.netloc or not parsed.path or parsed.path == "/":
+        raise ValueError("RSSHub locator must include a route")
+    if parsed.username is not None or parsed.password is not None:
+        raise ValueError("RSSHub locator must not contain credentials")
+    try:
+        if parsed.port is not None:
+            raise ValueError("RSSHub locator must not contain a port")
+    except ValueError as error:
+        raise ValueError("RSSHub locator must not contain a port") from error
+    if parsed.fragment:
+        raise ValueError("RSSHub locator must not contain a fragment")
+    if any(character.isspace() for character in raw):
+        raise ValueError("RSSHub locator must not contain whitespace")
+    if unquote(parsed.netloc) in {".", ".."} or any(
+        unquote(segment) in {".", ".."} for segment in parsed.path.split("/")
+    ):
+        raise ValueError("RSSHub locator must not contain path traversal")
+    return f"rsshub://{raw[9:]}"
+
+
+def _normalize_http_feed_url(raw: str) -> str:
     parsed = urlsplit(raw)
     scheme = parsed.scheme.lower()
     if scheme not in {"http", "https"} or not parsed.hostname:
@@ -36,6 +57,13 @@ def normalize_feed_url(value: str) -> str:
     path = parsed.path or "/"
     query = urlencode(sorted(parse_qsl(parsed.query, keep_blank_values=True)))
     return urlunsplit((scheme, netloc, path, query, ""))
+
+
+def normalize_feed_url(value: str) -> str:
+    raw = value.strip()
+    if raw[:9].lower() == "rsshub://":
+        return _normalize_rsshub_locator(raw)
+    return _normalize_http_feed_url(raw)
 
 
 @dataclass(slots=True)

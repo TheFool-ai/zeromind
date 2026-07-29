@@ -73,6 +73,46 @@ describe("ZeroMind administration", () => {
     expect(screen.getByRole("button", {name: "确认导入"})).toBeEnabled();
   });
 
+  it("submits an RSSHub locator without browser URL rejection", async () => {
+    localStorage.setItem("zeromind_token", "token");
+    window.history.replaceState({}, "", "/subscriptions");
+    let submitted: Record<string, string> | undefined;
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (_input, init) => {
+      if (init?.method === "POST") {
+        submitted = JSON.parse(String(init.body)) as Record<string, string>;
+        return response({
+          id: "feed-1",
+          title: submitted.title,
+          feed_url: submitted.feed_url,
+          site_url: null,
+          categories: [],
+          enabled: true,
+          health: "healthy",
+          next_poll_at: "2026-07-30T00:00:00Z",
+          last_checked_at: null,
+          consecutive_failures: 0
+        }, 201);
+      }
+      return response({items: []});
+    });
+    render(<App />);
+
+    await userEvent.type(await screen.findByLabelText("名称"), "Vista8");
+    await userEvent.type(
+      screen.getByLabelText("Feed URL"),
+      "rsshub://twitter/user/vista8"
+    );
+    expect(
+      screen.getByText("支持 https://… 和 rsshub://… 地址")
+    ).toBeVisible();
+    await userEvent.click(screen.getByRole("button", {name: "添加订阅"}));
+
+    expect(submitted).toEqual({
+      title: "Vista8",
+      feed_url: "rsshub://twitter/user/vista8"
+    });
+  });
+
   it("renders workflow validation errors returned by the API", async () => {
     localStorage.setItem("zeromind_token", "token");
     window.history.replaceState({}, "", "/workflows");

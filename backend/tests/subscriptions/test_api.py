@@ -28,6 +28,21 @@ def test_create_and_list_subscription() -> None:
     assert [item["title"] for item in listed.json()["items"]] == ["Example"]
 
 
+def test_create_rsshub_subscription_preserves_locator() -> None:
+    client = make_client()
+
+    response = client.post(
+        "/api/v1/subscriptions",
+        json={
+            "feed_url": "RSSHUB://twitter/user/vista8?mode=full",
+            "title": "Vista8",
+        },
+    )
+
+    assert response.status_code == 201
+    assert response.json()["feed_url"] == "rsshub://twitter/user/vista8?mode=full"
+
+
 def test_disable_and_enable_subscription() -> None:
     client = make_client()
     created = client.post(

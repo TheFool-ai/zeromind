@@ -52,3 +52,14 @@ def test_preview_opml_reports_invalid_feed_urls_without_aborting_batch() -> None
     assert result.invalid_entries[0].title == "Bad"
     assert result.invalid_entries[0].reason == "invalid_feed_url"
 
+
+def test_preview_opml_accepts_rsshub_locator_extension() -> None:
+    data = b"""<opml version="2.0"><body>
+      <outline text="Vista8"
+               xmlUrl="rsshub://twitter/user/vista8?mode=full"/>
+    </body></opml>"""
+
+    result = preview_opml(data)
+
+    assert result.invalid_entries == ()
+    assert result.entries[0].feed_url == "rsshub://twitter/user/vista8?mode=full"

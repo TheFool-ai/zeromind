@@ -75,7 +75,16 @@ export function SubscriptionsPage() {
         <Panel title="添加订阅">
           <form onSubmit={submit} className="form-stack">
             <label>名称<input name="title" required placeholder="技术雷达" /></label>
-            <label>Feed URL<input name="feed_url" type="url" required placeholder="https://example.com/rss" /></label>
+            <label>
+              Feed URL
+              <input
+                name="feed_url"
+                type="text"
+                required
+                placeholder="https://example.com/rss 或 rsshub://twitter/user/vista8"
+              />
+            </label>
+            <small>支持 https://… 和 rsshub://… 地址</small>
             <button disabled={create.isPending}>添加订阅</button>
             {create.error ? <ErrorNotice error={create.error} /> : null}
           </form>
@@ -135,7 +144,15 @@ export function SubscriptionsPage() {
                 {subscriptions.data?.items.map((item) => (
                   <tr key={item.id}>
                     <td><strong>{item.title}</strong></td>
-                    <td><a href={item.feed_url} target="_blank" rel="noreferrer">{item.feed_url}</a></td>
+                    <td>
+                      {item.feed_url.startsWith("rsshub://") ? (
+                        <code>{item.feed_url}</code>
+                      ) : (
+                        <a href={item.feed_url} target="_blank" rel="noreferrer">
+                          {item.feed_url}
+                        </a>
+                      )}
+                    </td>
                     <td><Status value={item.health} /></td>
                     <td>{formatTime(item.next_poll_at)}</td>
                     <td>{item.consecutive_failures}</td>

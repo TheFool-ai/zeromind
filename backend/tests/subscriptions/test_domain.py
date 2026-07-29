@@ -25,11 +25,38 @@ def test_normalize_feed_url_collapses_equivalent_urls(raw: str, expected: str) -
 
 
 @pytest.mark.parametrize(
+    ("raw", "expected"),
+    [
+        (
+            "RSSHUB://twitter/user/vista8?mode=full&lang=zh",
+            "rsshub://twitter/user/vista8?mode=full&lang=zh",
+        ),
+        (
+            "rsshub://Twitter/User/Vista8/%2Fencoded",
+            "rsshub://Twitter/User/Vista8/%2Fencoded",
+        ),
+    ],
+)
+def test_normalize_feed_url_preserves_rsshub_route(
+    raw: str,
+    expected: str,
+) -> None:
+    assert normalize_feed_url(raw) == expected
+
+
+@pytest.mark.parametrize(
     "raw",
     [
         "ftp://example.com/feed",
         "https://user:secret@example.com/feed",
         "https:///missing-host",
+        "rsshub://twitter",
+        "rsshub:///twitter/user/vista8",
+        "rsshub://user:secret@twitter/user/vista8",
+        "rsshub://twitter:443/user/vista8",
+        "rsshub://twitter/user/../vista8",
+        "rsshub://twitter/user/%2E%2E/vista8",
+        "rsshub://twitter/user/vista8#latest",
     ],
 )
 def test_normalize_feed_url_rejects_unsafe_or_invalid_urls(raw: str) -> None:
@@ -73,4 +100,3 @@ def test_success_resets_failures_and_persists_conditional_headers() -> None:
     assert subscription.etag == '"v2"'
     assert subscription.last_modified == "Wed, 29 Jul 2026 02:00:00 GMT"
     assert subscription.last_success_at == datetime(2026, 7, 29, 2, tzinfo=UTC)
-
