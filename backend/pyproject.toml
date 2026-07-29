@@ -62,5 +62,5 @@ strict = true
 packages = ["zeromind"]
 
 [[tool.mypy.overrides]]
-module = ["feedparser"]
+module = ["feedparser", "lxml", "lxml.*"]
 ignore_missing_imports = true
