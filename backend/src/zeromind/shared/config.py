@@ -18,9 +18,12 @@ class Settings(BaseSettings):
     admin_username: str = "admin"
     admin_password: str = Field(default="change-me", repr=False)
     token_secret: str = Field(default="development-only-secret", repr=False)
+    credential_secret: str = Field(
+        default="development-only-credential-secret",
+        repr=False,
+    )
 
 
 @lru_cache
 def get_settings() -> Settings:
     return Settings()
-
