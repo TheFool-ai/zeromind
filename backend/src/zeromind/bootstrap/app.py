@@ -6,6 +6,12 @@ from fastapi import FastAPI
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
+from zeromind.agents.api import create_agent_router
+from zeromind.agents.registry import (
+    AgentRegistry,
+    InMemoryAgentRepository,
+    SqlAlchemyAgentRepository,
+)
 from zeromind.ingestion.api import create_reference_router
 from zeromind.ingestion.repository import (
     InMemoryReferenceRepository,
@@ -39,6 +45,7 @@ def create_app(
     subscription_service: SubscriptionService | None = None,
     database: Database | None = None,
     reference_repository: ReferenceRepository | None = None,
+    agent_registry: AgentRegistry | None = None,
 ) -> FastAPI:
     resolved_database = database
     if subscription_service is None:
@@ -69,6 +76,13 @@ def create_app(
             else InMemoryReferenceRepository()
         )
     app.include_router(create_reference_router(reference_repository))
+    if agent_registry is None:
+        agent_registry = AgentRegistry(
+            SqlAlchemyAgentRepository(resolved_database.sessions)
+            if resolved_database is not None
+            else InMemoryAgentRepository()
+        )
+    app.include_router(create_agent_router(agent_registry))
 
     @app.get("/health/live", response_model=LiveHealth, tags=["health"])
     def live() -> LiveHealth:

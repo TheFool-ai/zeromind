@@ -3,6 +3,10 @@ from logging.config import fileConfig
 from alembic import context
 from sqlalchemy import engine_from_config, pool
 
+from zeromind.agents.models import (  # noqa: F401
+    AgentDefinitionModel,
+    ProviderProfileModel,
+)
 from zeromind.ingestion.models import (  # noqa: F401
     ContentReferenceModel,
     ReferenceRevisionModel,
