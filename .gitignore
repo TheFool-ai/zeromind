@@ -15,4 +15,6 @@ node_modules/
 frontend/dist/
 backend/data/
 *.log
-
+*.tsbuildinfo
+frontend/vite.config.js
+frontend/vite.config.d.ts
