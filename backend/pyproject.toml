@@ -42,6 +42,10 @@ packages = ["src/zeromind"]
 
 [tool.pytest.ini_options]
 addopts = "-ra"
+filterwarnings = [
+  "ignore:Using `httpx` with `starlette.testclient` is deprecated",
+  "ignore:To avoid breaking existing software while fixing issue 310:DeprecationWarning:feedparser.util",
+]
 pythonpath = ["src"]
 testpaths = ["tests"]
 
@@ -56,3 +60,7 @@ select = ["E", "F", "I", "UP", "B", "SIM"]
 python_version = "3.12"
 strict = true
 packages = ["zeromind"]
+
+[[tool.mypy.overrides]]
+module = ["feedparser"]
+ignore_missing_imports = true

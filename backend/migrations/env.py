@@ -3,6 +3,10 @@ from logging.config import fileConfig
 from alembic import context
 from sqlalchemy import engine_from_config, pool
 
+from zeromind.ingestion.models import (  # noqa: F401
+    ContentReferenceModel,
+    ReferenceRevisionModel,
+)
 from zeromind.shared.models import Base
 from zeromind.subscriptions.models import SubscriptionModel  # noqa: F401
 
