@@ -75,6 +75,18 @@ export type Subscription = {
   consecutive_failures: number;
 };
 
+export type RSSHubInstance = {
+  id: string;
+  name: string;
+  base_url: string;
+  authentication_mode: "key" | "code";
+  enabled: boolean;
+  active: boolean;
+  has_access_key: boolean;
+  created_at: string;
+  updated_at: string;
+};
+
 export type Reference = {
   id: string;
   subscription_id: string;

@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -111,6 +111,135 @@ describe("ZeroMind administration", () => {
       title: "Vista8",
       feed_url: "rsshub://twitter/user/vista8"
     });
+  });
+
+  it("registers an RSSHub instance without echoing its access key", async () => {
+    localStorage.setItem("zeromind_token", "token");
+    window.history.replaceState({}, "", "/rsshub");
+    let submitted: Record<string, unknown> | undefined;
+    let instances: unknown[] = [];
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (_input, init) => {
+      if (init?.method === "POST") {
+        submitted = JSON.parse(String(init.body)) as Record<string, unknown>;
+        const created = {
+          id: "rsshub-1",
+          name: submitted.name,
+          base_url: submitted.base_url,
+          authentication_mode: submitted.authentication_mode,
+          enabled: true,
+          active: true,
+          has_access_key: true,
+          created_at: "2026-07-30T00:00:00Z",
+          updated_at: "2026-07-30T00:00:00Z"
+        };
+        instances = [created];
+        return response(created, 201);
+      }
+      return response({items: instances});
+    });
+    render(<App />);
+
+    await userEvent.type(await screen.findByLabelText("实例名称"), "Primary");
+    await userEvent.type(
+      screen.getByLabelText("Base URL"),
+      "https://rsshub.example.com"
+    );
+    await userEvent.type(
+      screen.getByLabelText("Access Key（可选）"),
+      "instance-secret"
+    );
+    await userEvent.click(screen.getByRole("button", {name: "添加实例"}));
+
+    expect(submitted).toEqual({
+      name: "Primary",
+      base_url: "https://rsshub.example.com",
+      access_key: "instance-secret",
+      authentication_mode: "key",
+      enabled: true
+    });
+    expect(await screen.findByText("已配置密钥")).toBeVisible();
+    expect(screen.queryByDisplayValue("instance-secret")).not.toBeInTheDocument();
+  });
+
+  it("activates a configured RSSHub instance", async () => {
+    localStorage.setItem("zeromind_token", "token");
+    window.history.replaceState({}, "", "/rsshub");
+    let instances = [
+      {
+        id: "primary",
+        name: "Primary",
+        base_url: "https://rsshub.example.com",
+        authentication_mode: "key",
+        enabled: true,
+        active: true,
+        has_access_key: false,
+        created_at: "2026-07-30T00:00:00Z",
+        updated_at: "2026-07-30T00:00:00Z"
+      },
+      {
+        id: "backup",
+        name: "Backup",
+        base_url: "https://backup.example.com",
+        authentication_mode: "key",
+        enabled: true,
+        active: false,
+        has_access_key: false,
+        created_at: "2026-07-30T00:00:00Z",
+        updated_at: "2026-07-30T00:00:00Z"
+      }
+    ];
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
+      if (String(input).endsWith("/rsshub/instances/backup/activate")) {
+        instances = instances.map((instance) => ({
+          ...instance,
+          active: instance.id === "backup"
+        }));
+        return response(instances[1]);
+      }
+      if (init?.method === "DELETE") return response({}, 204);
+      return response({items: instances});
+    });
+    render(<App />);
+
+    await userEvent.click(
+      await screen.findByRole("button", {name: "设为活动实例 Backup"})
+    );
+
+    const backupRow = await screen.findByRole("row", {name: /Backup/});
+    expect(within(backupRow).getByText("活动")).toBeVisible();
+  });
+
+  it("can explicitly clear a saved RSSHub access key while editing", async () => {
+    localStorage.setItem("zeromind_token", "token");
+    window.history.replaceState({}, "", "/rsshub");
+    const instance = {
+      id: "primary",
+      name: "Primary",
+      base_url: "https://rsshub.example.com",
+      authentication_mode: "key",
+      enabled: true,
+      active: true,
+      has_access_key: true,
+      created_at: "2026-07-30T00:00:00Z",
+      updated_at: "2026-07-30T00:00:00Z"
+    };
+    let submitted: Record<string, unknown> | undefined;
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (_input, init) => {
+      if (init?.method === "PUT") {
+        submitted = JSON.parse(String(init.body)) as Record<string, unknown>;
+        return response({...instance, has_access_key: false});
+      }
+      return response({items: [instance]});
+    });
+    render(<App />);
+
+    await userEvent.click(
+      await screen.findByRole("button", {name: "编辑 Primary"})
+    );
+    await userEvent.click(screen.getByLabelText("清除已保存的 Access Key"));
+    await userEvent.click(screen.getByRole("button", {name: "保存实例"}));
+
+    expect(submitted).toMatchObject({access_key: null});
   });
 
   it("renders workflow validation errors returned by the API", async () => {

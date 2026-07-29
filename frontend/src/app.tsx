@@ -12,6 +12,7 @@ import {api, setToken as persistToken, getToken} from "./api/client";
 import {AgentsPage} from "./pages/agents";
 import {OverviewPage} from "./pages/overview";
 import {ReferencesPage} from "./pages/references";
+import {RSSHubPage} from "./pages/rsshub";
 import {RunsPage} from "./pages/runs";
 import {SubscriptionsPage} from "./pages/subscriptions";
 import {WebhooksPage} from "./pages/webhooks";
@@ -21,11 +22,12 @@ import "./styles.css";
 const navigation = [
   ["/", "总览", "01"],
   ["/subscriptions", "订阅源", "02"],
-  ["/references", "内容引用", "03"],
-  ["/agents", "Agents", "04"],
-  ["/workflows", "工作流", "05"],
-  ["/runs", "运行记录", "06"],
-  ["/webhooks", "Webhooks", "07"]
+  ["/rsshub", "RSSHub", "03"],
+  ["/references", "内容引用", "04"],
+  ["/agents", "Agents", "05"],
+  ["/workflows", "工作流", "06"],
+  ["/runs", "运行记录", "07"],
+  ["/webhooks", "Webhooks", "08"]
 ] as const;
 
 function Login({onLogin}: {onLogin: (token: string) => void}) {
@@ -94,6 +96,7 @@ function Shell({logout}: {logout: () => void}) {
         <Routes>
           <Route path="/" element={<OverviewPage />} />
           <Route path="/subscriptions" element={<SubscriptionsPage />} />
+          <Route path="/rsshub" element={<RSSHubPage />} />
           <Route path="/references" element={<ReferencesPage />} />
           <Route path="/agents" element={<AgentsPage />} />
           <Route path="/workflows" element={<WorkflowsPage />} />
