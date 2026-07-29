@@ -8,9 +8,12 @@ from zeromind.bootstrap.runtime import build_workflow_executor
 from zeromind.content.network_policy import NetworkPolicy
 from zeromind.delivery.repository import SqlAlchemyWebhookRepository
 from zeromind.delivery.service import WebhookDeliveryService
-from zeromind.ingestion.feed_client import FeedClient, FeedDocument
+from zeromind.ingestion.feed_client import FeedClient, FeedDocument, FeedNotModified
 from zeromind.ingestion.repository import SqlAlchemyReferenceRepository
 from zeromind.ingestion.service import IngestionService
+from zeromind.rsshub.credentials import CredentialCipher
+from zeromind.rsshub.repository import SqlAlchemyRSSHubInstanceRepository
+from zeromind.rsshub.resolver import RSSHubResolver
 from zeromind.shared.config import get_settings
 from zeromind.shared.database import create_database
 from zeromind.shared.outbox import (
@@ -68,6 +71,20 @@ async def matching_workflows(
     )
 
 
+async def fetch_subscription_document(
+    subscription: Subscription,
+    *,
+    resolver: RSSHubResolver,
+    feed_client: FeedClient,
+) -> FeedDocument | FeedNotModified:
+    resolved_url = await resolver.resolve(subscription.feed_url)
+    return await feed_client.fetch(
+        resolved_url,
+        etag=subscription.etag,
+        last_modified=subscription.last_modified,
+    )
+
+
 async def _schedule_due_feeds() -> int:
     database = create_database()
     try:
@@ -90,6 +107,7 @@ def schedule_due_feeds() -> int:
 
 async def _poll_feed(subscription_id: str) -> dict[str, int]:
     database = create_database()
+    settings = get_settings()
     subscriptions = SqlAlchemySubscriptionRepository(database.sessions)
     references = SqlAlchemyReferenceRepository(database.sessions)
     outbox = SqlAlchemyOutboxRepository(database.sessions)
@@ -100,10 +118,13 @@ async def _poll_feed(subscription_id: str) -> dict[str, int]:
         raise KeyError(identifier)
     checked_at = datetime.now(UTC)
     try:
-        document = await FeedClient(network_policy=NetworkPolicy()).fetch(
-            subscription.feed_url,
-            etag=subscription.etag,
-            last_modified=subscription.last_modified,
+        document = await fetch_subscription_document(
+            subscription,
+            resolver=RSSHubResolver(
+                SqlAlchemyRSSHubInstanceRepository(database.sessions),
+                CredentialCipher(settings.credential_secret),
+            ),
+            feed_client=FeedClient(network_policy=NetworkPolicy()),
         )
         if isinstance(document, FeedDocument):
             result = await IngestionService(references).ingest(

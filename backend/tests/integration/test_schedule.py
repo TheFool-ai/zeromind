@@ -1,8 +1,19 @@
 from datetime import UTC, datetime, timedelta
 
+import httpx
 import pytest
 
-from zeromind.bootstrap.tasks import DueFeedScheduler, matching_workflows, overlap_window_start
+from zeromind.bootstrap.tasks import (
+    DueFeedScheduler,
+    fetch_subscription_document,
+    matching_workflows,
+    overlap_window_start,
+)
+from zeromind.ingestion.feed_client import FeedClient, FeedDocument
+from zeromind.rsshub.credentials import CredentialCipher
+from zeromind.rsshub.repository import InMemoryRSSHubInstanceRepository
+from zeromind.rsshub.resolver import RSSHubResolver
+from zeromind.rsshub.service import RSSHubInstanceService
 from zeromind.subscriptions.domain import Subscription
 from zeromind.subscriptions.repository import InMemorySubscriptionRepository
 from zeromind.workflows.domain import WorkflowDefinition
@@ -42,6 +53,44 @@ def test_poll_window_has_ten_minute_overlap() -> None:
     checked = datetime(2026, 7, 29, 12, tzinfo=UTC)
 
     assert overlap_window_start(checked) == checked - timedelta(minutes=10)
+
+
+@pytest.mark.asyncio
+async def test_poll_fetches_rsshub_subscription_through_active_instance() -> None:
+    requested_url: str | None = None
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal requested_url
+        requested_url = str(request.url)
+        return httpx.Response(
+            200,
+            content=b"<rss version='2.0'><channel><title>Feed</title></channel></rss>",
+            headers={"content-type": "application/rss+xml"},
+        )
+
+    repository = InMemoryRSSHubInstanceRepository()
+    cipher = CredentialCipher("test-credential-secret")
+    await RSSHubInstanceService(repository, cipher).create(
+        name="Primary",
+        base_url="https://rsshub.example.com",
+        access_key="instance-secret",
+    )
+    subscription = Subscription.create(
+        feed_url="rsshub://twitter/user/vista8?mode=full",
+        title="Vista8",
+    )
+
+    document = await fetch_subscription_document(
+        subscription,
+        resolver=RSSHubResolver(repository, cipher),
+        feed_client=FeedClient(transport=httpx.MockTransport(handler)),
+    )
+
+    assert isinstance(document, FeedDocument)
+    assert requested_url == (
+        "https://rsshub.example.com/twitter/user/vista8"
+        "?mode=full&key=instance-secret"
+    )
 
 
 @pytest.mark.asyncio
