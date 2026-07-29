@@ -12,13 +12,17 @@ and are resolved only when a feed is fetched.
 - Accept, normalize, persist, display, and deduplicate `rsshub://` locators.
 - Resolve RSSHub locators to an administrator-configured HTTP or HTTPS
   instance at fetch time.
+- Register multiple RSSHub instances and select one active default instance.
+- Store an optional instance access key encrypted at rest without returning it
+  from the API.
 - Support RSSHub locators in manual subscription creation and as a ZeroMind
   extension during OPML import.
 - Preserve the existing behavior for HTTP and HTTPS feeds.
 - Show actionable validation and fetch errors.
 
-User accounts, per-user subscriptions, the user/admin application split, and
-an administration UI for global settings are separate follow-up work.
+User accounts, per-user subscriptions, and the user/admin application split
+are separate follow-up work. The existing single control plane owns RSSHub
+instance management for this phase.
 
 ## Ecosystem Meaning
 
@@ -101,20 +105,51 @@ the configured instance base URL.
 - The resolved URL is passed through the same outbound network safety policy
   used for other remote requests.
 
-The first implementation exposes the instance as
-`ZEROMIND_RSSHUB_BASE_URL`, defaulting to `https://rsshub.app`. A later
-administration-settings feature can own this value without changing the
-subscription model or resolver contract.
+The first implementation persists an RSSHub instance registry. Each instance
+has a unique name, an HTTP or HTTPS base URL, an optional encrypted access key,
+an enabled flag, and an active-default flag. Exactly zero or one instance is
+active. Creating the first enabled instance makes it active; activating
+another instance atomically replaces the previous active instance.
 
-An instance may be protected by RSSHub access control. ZeroMind supports an
-optional access-key environment-variable reference and either:
+ZeroMind does not create a hidden public default. A direct HTTP or HTTPS feed
+continues to work without an RSSHub instance, while fetching an `rsshub://`
+subscription without an active instance fails with an actionable
+`rsshub_instance_not_configured` error.
+
+Instance selection is global in this phase. Subscriptions do not bind to an
+instance, and automatic failover is deferred because different RSSHub
+instances can expose different route versions, caches, and credentials.
+
+An instance may be protected by RSSHub access control. ZeroMind accepts an
+optional access key when an instance is created or updated, encrypts it before
+persistence using the application credential secret, and never returns its
+value through the API. The response exposes only `has_access_key`.
+
+The active instance configures one of two authentication modes:
 
 - appends `key=<access-key>` to the resolved URL; or
 - appends `code=md5(<route><access-key>)`.
 
+The default mode is `key`. Updating an instance without an `access_key` field
+keeps the current secret; explicitly clearing it removes the secret.
+
 The access key is instance authentication. It is distinct from route-provider
 credentials such as `TWITTER_AUTH_TOKEN`, which remain configured on the
 RSSHub server.
+
+## Instance Management API
+
+The control-plane API provides:
+
+- `GET /api/v1/rsshub/instances` to list sanitized instances;
+- `POST /api/v1/rsshub/instances` to register an instance;
+- `PUT /api/v1/rsshub/instances/{id}` to update its metadata or access key;
+- `POST /api/v1/rsshub/instances/{id}/activate` to select the active instance;
+- `DELETE /api/v1/rsshub/instances/{id}` to remove a non-active instance.
+
+Deleting the active instance is rejected until another instance is activated.
+This prevents a silent loss of RSSHub fetching. Instance base URLs are
+normalized and deduplicated independently of subscription locators.
 
 ## Fetch and Error Behavior
 
@@ -125,7 +160,8 @@ records the same retry state used by direct feeds.
 Errors distinguish:
 
 - invalid RSSHub locator;
-- invalid or blocked RSSHub instance;
+- no active RSSHub instance;
+- invalid, disabled, or blocked RSSHub instance;
 - instance unreachable or timed out;
 - RSSHub route unavailable or missing provider credentials;
 - response is not a valid feed.
@@ -157,8 +193,14 @@ rsshub://twitter/media/vista8
 ```
 
 Subscription rows display the stored locator. Direct feeds remain clickable.
-RSSHub rows expose the resolved URL as the external-open target while keeping
-the locator visible.
+RSSHub rows display the locator as code instead of exposing a resolved URL:
+the resolved URL may contain an instance access key and is therefore a
+server-side fetch detail.
+
+A dedicated RSSHub instances page lists the registered base URLs, enabled and
+active state, and whether an access key exists. It supports adding instances,
+activating one, editing the authentication mode or secret, and deleting only
+inactive instances. Secrets are write-only fields.
 
 ## Security
 
@@ -166,8 +208,11 @@ the locator visible.
 - RSSHub locators cannot select an arbitrary host; only the configured
   instance determines the network destination.
 - Instance configuration is validated independently.
-- Instance access keys are referenced through environment variables and are
-  never stored in subscription records or exposed in the UI.
+- Instance access keys are encrypted before database persistence, never stored
+  in subscription records, and never returned to the UI.
+- `ZEROMIND_CREDENTIAL_SECRET` is required to be a high-entropy secret in
+  production and must remain stable across deployments so stored credentials
+  remain decryptable.
 - Resolved requests retain redirect, DNS/IP, response-size, and timeout
   controls.
 - Provider credentials remain in RSSHub configuration and are never stored in
@@ -176,9 +221,11 @@ the locator visible.
 ## Testing
 
 Backend tests cover normalization, invalid syntax, query preservation,
-deduplication, OPML preview/import, instance resolution, and feed-client
-fetching through the resolved URL. Frontend tests cover manual entry and
-display of both address forms.
+deduplication, OPML preview/import, instance lifecycle and active-selection
+invariants, secret encryption and sanitization, instance resolution,
+authentication query construction, and feed-client fetching through the
+resolved URL. Frontend tests cover manual entry and display of both address
+forms plus instance registration and activation.
 
 An integration fixture uses a local HTTP feed server rather than the public
 RSSHub service. Public RSSHub and provider APIs are external dependencies and
