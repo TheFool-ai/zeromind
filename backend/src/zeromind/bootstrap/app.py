@@ -28,6 +28,13 @@ from zeromind.ingestion.repository import (
     ReferenceRepository,
     SqlAlchemyReferenceRepository,
 )
+from zeromind.rsshub.api import create_rsshub_router
+from zeromind.rsshub.credentials import CredentialCipher
+from zeromind.rsshub.repository import (
+    InMemoryRSSHubInstanceRepository,
+    SqlAlchemyRSSHubInstanceRepository,
+)
+from zeromind.rsshub.service import RSSHubInstanceService
 from zeromind.shared.config import get_settings
 from zeromind.shared.database import Database, create_database
 from zeromind.subscriptions.api import create_subscription_router
@@ -69,6 +76,7 @@ def create_app(
     token_service: TokenService | None = None,
     webhook_repository: WebhookRepository | None = None,
     webhook_network_policy: NetworkPolicy | None = None,
+    rsshub_service: RSSHubInstanceService | None = None,
     require_auth: bool = False,
 ) -> FastAPI:
     resolved_database = database
@@ -92,7 +100,8 @@ def create_app(
         lifespan=lifespan,
     )
     probe = readiness_probe or _default_readiness_probe
-    resolved_token_service = token_service or TokenService(get_settings())
+    settings = get_settings()
+    resolved_token_service = token_service or TokenService(settings)
 
     @app.middleware("http")
     async def authenticate_admin_api(
@@ -120,6 +129,16 @@ def create_app(
         return await call_next(request)
 
     app.include_router(create_subscription_router(subscription_service))
+    if rsshub_service is None:
+        rsshub_service = RSSHubInstanceService(
+            (
+                SqlAlchemyRSSHubInstanceRepository(resolved_database.sessions)
+                if resolved_database is not None
+                else InMemoryRSSHubInstanceRepository()
+            ),
+            CredentialCipher(settings.credential_secret),
+        )
+    app.include_router(create_rsshub_router(rsshub_service))
     if reference_repository is None:
         reference_repository = (
             SqlAlchemyReferenceRepository(resolved_database.sessions)
