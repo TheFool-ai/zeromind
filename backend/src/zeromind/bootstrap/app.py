@@ -1,9 +1,15 @@
-from collections.abc import Callable
+from collections.abc import AsyncIterator, Callable
+from contextlib import asynccontextmanager
 from typing import Literal
 
 from fastapi import FastAPI
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
+
+from zeromind.shared.database import Database, create_database
+from zeromind.subscriptions.api import create_subscription_router
+from zeromind.subscriptions.repository import SqlAlchemySubscriptionRepository
+from zeromind.subscriptions.service import SubscriptionService
 
 DependencyState = Literal["up", "down", "unknown"]
 ReadinessProbe = Callable[[], dict[str, DependencyState]]
@@ -22,14 +28,33 @@ def _default_readiness_probe() -> dict[str, DependencyState]:
     return {"database": "unknown", "redis": "unknown", "pi": "unknown"}
 
 
-def create_app(readiness_probe: ReadinessProbe | None = None) -> FastAPI:
+def create_app(
+    readiness_probe: ReadinessProbe | None = None,
+    subscription_service: SubscriptionService | None = None,
+    database: Database | None = None,
+) -> FastAPI:
+    resolved_database = database
+    if subscription_service is None:
+        resolved_database = resolved_database or create_database()
+        subscription_service = SubscriptionService(
+            SqlAlchemySubscriptionRepository(resolved_database.sessions)
+        )
+
+    @asynccontextmanager
+    async def lifespan(_: FastAPI) -> AsyncIterator[None]:
+        yield
+        if resolved_database is not None:
+            await resolved_database.dispose()
+
     app = FastAPI(
         title="ZeroMind API",
         version="0.1.0",
         docs_url="/api/docs",
         openapi_url="/api/openapi.json",
+        lifespan=lifespan,
     )
     probe = readiness_probe or _default_readiness_probe
+    app.include_router(create_subscription_router(subscription_service))
 
     @app.get("/health/live", response_model=LiveHealth, tags=["health"])
     def live() -> LiveHealth:
@@ -55,4 +80,3 @@ def create_app(readiness_probe: ReadinessProbe | None = None) -> FastAPI:
 
 
 app = create_app()
-
