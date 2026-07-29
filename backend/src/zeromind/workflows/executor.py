@@ -32,6 +32,20 @@ def resolve_mapping(value: object, context: dict[str, object]) -> object:
     return value
 
 
+def persistent_view(value: object) -> object:
+    """Remove transient article bodies before any workflow state is persisted."""
+    if isinstance(value, dict):
+        transient = value.get("_transient_document") is True
+        return {
+            str(key): persistent_view(item)
+            for key, item in value.items()
+            if key != "_transient_document" and not (transient and key == "text")
+        }
+    if isinstance(value, list):
+        return [persistent_view(item) for item in value]
+    return value
+
+
 class WorkflowExecutor:
     def __init__(
         self,
@@ -91,7 +105,10 @@ class WorkflowExecutor:
             resolved_output = resolve_mapping(definition.spec.output, context)
             if not isinstance(resolved_output, dict):
                 raise ValueError("workflow output must resolve to an object")
-            run.output = resolved_output
+            persisted_output = persistent_view(resolved_output)
+            if not isinstance(persisted_output, dict):
+                raise ValueError("workflow output must resolve to an object")
+            run.output = persisted_output
             run.status = "completed"
             run.completed_at = datetime.now(UTC)
             await self._repository.save_run(run)
@@ -117,13 +134,16 @@ class WorkflowExecutor:
             raise ValueError(f"node {node.id} input must resolve to an object")
         if node.agent_id:
             resolved["_agent_id"] = str(node.agent_id)
+        persisted_input = persistent_view(resolved)
+        if not isinstance(persisted_input, dict):
+            raise ValueError(f"node {node.id} input must resolve to an object")
         step = StepRun(
             id=uuid.uuid4(),
             run_id=run.id,
             node_id=node.id,
             status="running",
             attempts=0,
-            input=resolved,
+            input=persisted_input,
             output=None,
             error=None,
             started_at=datetime.now(UTC),
@@ -135,7 +155,10 @@ class WorkflowExecutor:
             try:
                 async with asyncio.timeout(node.timeout_seconds):
                     result = await handler(resolved)
-                step.output = result
+                persisted_result = persistent_view(result)
+                if not isinstance(persisted_result, dict):
+                    raise ValueError(f"node {node.id} output must be an object")
+                step.output = persisted_result
                 step.status = "completed"
                 step.completed_at = datetime.now(UTC)
                 return result

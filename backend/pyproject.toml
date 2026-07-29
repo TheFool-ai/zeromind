@@ -66,3 +66,7 @@ packages = ["zeromind"]
 [[tool.mypy.overrides]]
 module = ["feedparser", "lxml", "lxml.*"]
 ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = ["celery", "celery.*"]
+ignore_missing_imports = true

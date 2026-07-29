@@ -122,3 +122,51 @@ output: {value: $.steps.node.value}
 
     assert first.id == second.id
     assert executions == 1
+
+
+@pytest.mark.asyncio
+async def test_executor_never_persists_transient_resolved_article_text() -> None:
+    repository = InMemoryWorkflowRepository()
+    definition = WorkflowDefinition.create(
+        parse_workflow_yaml(
+            """
+name: transient
+trigger: {events: [manual]}
+nodes:
+  - id: resolve
+    type: resolve
+  - id: analyze
+    type: agent
+    agent_id: 44444444-4444-4444-4444-444444444444
+    depends_on: [resolve]
+    input: {document: $.steps.resolve}
+output: {analysis: $.steps.analyze}
+"""
+        )
+    )
+    await repository.add_definition(definition)
+
+    async def resolve(_: dict[str, object]) -> dict[str, object]:
+        return {
+            "_transient_document": True,
+            "title": "Safe metadata",
+            "text": "ARTICLE BODY MUST NOT BE STORED",
+        }
+
+    async def analyze(input: dict[str, object]) -> dict[str, object]:
+        assert "ARTICLE BODY" in str(input)
+        return {"summary": "Structured result"}
+
+    run = await WorkflowExecutor(
+        repository,
+        handlers={"resolve": resolve, "agent": analyze},
+    ).execute(
+        definition.id,
+        trigger={"event": "manual"},
+        idempotency_key="manual:transient",
+    )
+
+    persisted = await repository.get_run(run.id)
+    assert persisted is not None
+    assert "ARTICLE BODY" not in str(persisted)
+    assert persisted.output == {"analysis": {"summary": "Structured result"}}

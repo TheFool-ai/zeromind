@@ -1,8 +1,8 @@
-from collections.abc import AsyncIterator, Callable
+from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import asynccontextmanager
 from typing import Literal
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request, Response
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
@@ -12,12 +12,23 @@ from zeromind.agents.registry import (
     InMemoryAgentRepository,
     SqlAlchemyAgentRepository,
 )
+from zeromind.bootstrap.runtime import build_workflow_executor
+from zeromind.content.network_policy import NetworkPolicy
+from zeromind.delivery.api import create_delivery_router
+from zeromind.delivery.repository import (
+    InMemoryWebhookRepository,
+    SqlAlchemyWebhookRepository,
+    WebhookRepository,
+)
+from zeromind.identity.api import create_identity_router
+from zeromind.identity.tokens import InvalidToken, TokenService
 from zeromind.ingestion.api import create_reference_router
 from zeromind.ingestion.repository import (
     InMemoryReferenceRepository,
     ReferenceRepository,
     SqlAlchemyReferenceRepository,
 )
+from zeromind.shared.config import get_settings
 from zeromind.shared.database import Database, create_database
 from zeromind.subscriptions.api import create_subscription_router
 from zeromind.subscriptions.repository import SqlAlchemySubscriptionRepository
@@ -55,6 +66,10 @@ def create_app(
     agent_registry: AgentRegistry | None = None,
     workflow_repository: WorkflowRepository | None = None,
     workflow_executor: WorkflowExecutor | None = None,
+    token_service: TokenService | None = None,
+    webhook_repository: WebhookRepository | None = None,
+    webhook_network_policy: NetworkPolicy | None = None,
+    require_auth: bool = False,
 ) -> FastAPI:
     resolved_database = database
     if subscription_service is None:
@@ -77,6 +92,33 @@ def create_app(
         lifespan=lifespan,
     )
     probe = readiness_probe or _default_readiness_probe
+    resolved_token_service = token_service or TokenService(get_settings())
+
+    @app.middleware("http")
+    async def authenticate_admin_api(
+        request: Request,
+        call_next: Callable[[Request], Awaitable[Response]],
+    ) -> Response:
+        protected = (
+            require_auth
+            and request.method != "OPTIONS"
+            and request.url.path.startswith("/api/v1/")
+            and request.url.path != "/api/v1/auth/token"
+        )
+        if protected:
+            authorization = request.headers.get("authorization", "")
+            scheme, _, token = authorization.partition(" ")
+            try:
+                if scheme.lower() != "bearer" or not token:
+                    raise InvalidToken("bearer token is required")
+                resolved_token_service.verify(token)
+            except InvalidToken:
+                return JSONResponse(
+                    status_code=401,
+                    content={"detail": {"code": "authentication_required"}},
+                )
+        return await call_next(request)
+
     app.include_router(create_subscription_router(subscription_service))
     if reference_repository is None:
         reference_repository = (
@@ -98,15 +140,30 @@ def create_app(
             if resolved_database is not None
             else InMemoryWorkflowRepository()
         )
-    workflow_executor = workflow_executor or WorkflowExecutor(
-        workflow_repository,
-        handlers={},
+    workflow_executor = workflow_executor or build_workflow_executor(
+        workflow_repository=workflow_repository,
+        reference_repository=reference_repository,
+        agent_registry=agent_registry,
+        settings=get_settings(),
     )
     app.include_router(
         create_workflow_router(
             workflow_repository,
             workflow_executor,
             agent_registry,
+        )
+    )
+    app.include_router(create_identity_router(resolved_token_service))
+    if webhook_repository is None:
+        webhook_repository = (
+            SqlAlchemyWebhookRepository(resolved_database.sessions)
+            if resolved_database is not None
+            else InMemoryWebhookRepository()
+        )
+    app.include_router(
+        create_delivery_router(
+            webhook_repository,
+            webhook_network_policy or NetworkPolicy(),
         )
     )
 
@@ -133,4 +190,4 @@ def create_app(
     return app
 
 
-app = create_app()
+app = create_app(require_auth=True)

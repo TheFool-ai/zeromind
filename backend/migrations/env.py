@@ -11,6 +11,7 @@ from zeromind.ingestion.models import (  # noqa: F401
     ContentReferenceModel,
     ReferenceRevisionModel,
 )
+from zeromind.delivery.models import WebhookEndpointModel  # noqa: F401
 from zeromind.shared.models import Base
 from zeromind.subscriptions.models import SubscriptionModel  # noqa: F401
 from zeromind.workflows.models import (  # noqa: F401
