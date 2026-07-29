@@ -22,6 +22,13 @@ from zeromind.shared.database import Database, create_database
 from zeromind.subscriptions.api import create_subscription_router
 from zeromind.subscriptions.repository import SqlAlchemySubscriptionRepository
 from zeromind.subscriptions.service import SubscriptionService
+from zeromind.workflows.api import create_workflow_router
+from zeromind.workflows.executor import WorkflowExecutor
+from zeromind.workflows.repository import (
+    InMemoryWorkflowRepository,
+    SqlAlchemyWorkflowRepository,
+    WorkflowRepository,
+)
 
 DependencyState = Literal["up", "down", "unknown"]
 ReadinessProbe = Callable[[], dict[str, DependencyState]]
@@ -46,6 +53,8 @@ def create_app(
     database: Database | None = None,
     reference_repository: ReferenceRepository | None = None,
     agent_registry: AgentRegistry | None = None,
+    workflow_repository: WorkflowRepository | None = None,
+    workflow_executor: WorkflowExecutor | None = None,
 ) -> FastAPI:
     resolved_database = database
     if subscription_service is None:
@@ -83,6 +92,23 @@ def create_app(
             else InMemoryAgentRepository()
         )
     app.include_router(create_agent_router(agent_registry))
+    if workflow_repository is None:
+        workflow_repository = (
+            SqlAlchemyWorkflowRepository(resolved_database.sessions)
+            if resolved_database is not None
+            else InMemoryWorkflowRepository()
+        )
+    workflow_executor = workflow_executor or WorkflowExecutor(
+        workflow_repository,
+        handlers={},
+    )
+    app.include_router(
+        create_workflow_router(
+            workflow_repository,
+            workflow_executor,
+            agent_registry,
+        )
+    )
 
     @app.get("/health/live", response_model=LiveHealth, tags=["health"])
     def live() -> LiveHealth:

@@ -36,6 +36,7 @@ dev = [
   "ruff>=0.12,<1",
   "types-defusedxml>=0.7,<1",
   "types-jsonschema>=4.26,<5",
+  "types-PyYAML>=6.0,<7",
 ]
 
 [tool.hatch.build.targets.wheel]

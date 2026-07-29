@@ -13,6 +13,11 @@ from zeromind.ingestion.models import (  # noqa: F401
 )
 from zeromind.shared.models import Base
 from zeromind.subscriptions.models import SubscriptionModel  # noqa: F401
+from zeromind.workflows.models import (  # noqa: F401
+    StepRunModel,
+    WorkflowDefinitionModel,
+    WorkflowRunModel,
+)
 
 config = context.config
 if config.config_file_name is not None:
