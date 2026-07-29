@@ -3,7 +3,8 @@
 ## 部署与升级
 
 生产环境必须替换 `.env.example` 中的所有占位值。Provider 与 webhook 密钥以环境变量形式
-注入容器；数据库只保存变量名。不要把 `.env` 提交到 Git。
+注入容器；数据库只保存变量名。RSSHub Access Key 使用
+`ZEROMIND_CREDENTIAL_SECRET` 加密后存入数据库。不要把 `.env` 提交到 Git。
 
 ```bash
 docker compose pull
@@ -25,6 +26,25 @@ docker compose ps
 - `postgres`：业务事实、幂等键、运行记录和 outbox，是可恢复的唯一事实来源。
 - `redis`：短期任务传输；启用 AOF，但不替代 PostgreSQL。
 - `frontend`：静态控制台与同源反向代理。
+
+## RSSHub 实例
+
+在控制台的“RSSHub”页面注册一个或多个 HTTP(S) 实例。第一个启用的实例会自动成为活动
+实例，也可以显式切换。订阅保存的是 `rsshub://twitter/user/vista8` 这样的逻辑路由，worker
+只在抓取前组合活动实例的 Base URL 和可选 Access Key。
+
+RSSHub 的实例 Access Key 与 Twitter 等上游凭证属于不同边界：
+
+- 实例 Access Key 在 ZeroMind 页面写入，由 `ZEROMIND_CREDENTIAL_SECRET` 加密，接口只返回
+  `has_access_key`。
+- `TWITTER_AUTH_TOKEN`、Twitter Developer API Key 等上游凭证必须配置在 RSSHub 部署中，
+  不要写入 ZeroMind 的订阅地址或实例 Access Key。
+- 活动实例不能直接停用或删除；先激活另一个实例。
+- 当前版本不会自动故障转移，避免实例版本、缓存和上游账号差异造成内容漂移。
+
+`ZEROMIND_CREDENTIAL_SECRET` 必须使用高熵随机值并在所有 API/worker 副本中保持一致。
+数据库中仍有 RSSHub 密文时不能直接轮换该值，否则历史 Access Key 将无法解密。需要轮换时，
+先逐个重新写入实例 Access Key，再以受控迁移方式重新加密。
 
 ## 备份与恢复
 
@@ -53,14 +73,17 @@ Redis 丢失后可以从 PostgreSQL 的到期订阅、未派发 outbox 和过期
 - 就绪：`GET /health/ready`，依赖状态不是全部 `up` 时返回 503。
 - 关注：连续 Feed 失败数、pending/processing outbox 年龄、失败工作流比例、webhook exhaustion、
   worker 队列深度、PostgreSQL 磁盘空间。
-- 日志中禁止输出 Provider 密钥、webhook secret、Bearer token 和解析出的正文。
+- 日志中禁止输出 Provider 密钥、RSSHub Access Key、webhook secret、Bearer token 和解析出的
+  正文。
 
 ## 故障处理
 
 ### Feed 连续失败
 
 检查订阅的 `health`、`last_checked_at` 和 `consecutive_failures`。失败会指数退避，重新启用订阅
-会使其立即到期。确认目标为公开 HTTP(S) 地址，且响应小于 10 MiB。
+会使其立即到期。确认目标为公开 HTTP(S) 地址，且响应小于 10 MiB。对于 `rsshub://` 订阅，
+还要确认存在启用的活动实例、实例 Access Key 正确，并在 RSSHub 服务端配置了对应路由所需的
+上游 Provider 凭证。
 
 ### outbox 长时间 pending
 
@@ -85,5 +108,5 @@ JSON Schema。
 - 所有出站原文与 webhook URL 在请求前解析 DNS 并拒绝非公网 IP；原文重定向逐跳复检。
 - OPML 使用禁用外部实体的解析器；工作流使用 `yaml.safe_load` 和受限 `$.path` 映射。
 - 原文正文仅存在于单次工作流进程内存，运行步骤持久化前会移除 transient document 的正文。
-- 定期轮换管理员令牌密钥、Provider 密钥和 webhook secret。
-
+- 定期轮换管理员令牌密钥、Provider 密钥和 webhook secret。RSSHub Access Key 可以在页面
+  直接替换；应用凭证加密密钥必须按上面的重新加密流程轮换。

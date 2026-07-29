@@ -6,6 +6,8 @@ ZeroMind 是一个以“引用优先”为原则的 RSS 信息收集与 Agent �
 ## 能力
 
 - 单条添加或通过 OPML 1.0/2.0 批量导入 RSS。
+- 以 `rsshub://` 保存实例无关的 RSSHub 路由，支持多实例注册、活动实例选择和加密
+  Access Key。
 - 每 30 分钟认领到期 Feed，并使用 10 分钟时间重叠、HTTP 条件请求和稳定条目标识保证幂等。
 - 安全地即时解析原文：限制协议、大小、重定向，并阻止内网/本地地址。
 - 注册 Provider Profile 和多个 Agent；密钥只保存环境变量名，执行内核使用 Pi。
@@ -19,7 +21,7 @@ ZeroMind 是一个以“引用优先”为原则的 RSS 信息收集与 Agent �
 
 ```bash
 cp .env.example .env
-# 编辑 .env，替换数据库、管理员和令牌密钥
+# 编辑 .env，替换数据库、管理员、令牌和凭证加密密钥
 docker compose up --build -d
 docker compose ps
 ```
@@ -28,11 +30,13 @@ docker compose ps
 
 首次配置顺序：
 
-1. 在“订阅源”中添加 Feed 或预览并导入 OPML。
-2. 创建 Provider Profile；`api_key_env` 填写环境变量名，例如 `OPENAI_API_KEY`。
-3. 创建 Agent，配置 system prompt、capabilities 以及 JSON Schema 输入输出契约。
-4. 复制 [示例工作流](docs/examples/article-analysis.yaml)，替换 `agent_id`，校验并激活。
-5. 可选：注册 webhook，`secret_env` 同样填写环境变量名。
+1. 如果使用 `rsshub://`，先在“RSSHub”中注册实例并确认它处于活动状态。
+2. 在“订阅源”中添加 HTTP(S) Feed、`rsshub://twitter/user/vista8`，或者预览并导入
+   OPML。
+3. 创建 Provider Profile；`api_key_env` 填写环境变量名，例如 `OPENAI_API_KEY`。
+4. 创建 Agent，配置 system prompt、capabilities 以及 JSON Schema 输入输出契约。
+5. 复制 [示例工作流](docs/examples/article-analysis.yaml)，替换 `agent_id`，校验并激活。
+6. 可选：注册 webhook，`secret_env` 同样填写环境变量名。
 
 ## 架构
 
@@ -43,6 +47,7 @@ flowchart LR
   Beat["Celery Beat\n每 30 分钟"] --> Redis[("Redis")]
   Redis --> Worker["Celery Worker"]
   Worker --> Feed["RSS / 原文"]
+  Worker --> RSSHub["活动 RSSHub 实例"]
   Worker --> Pi["Pi Agent Runtime\nJSONL 子进程"]
   Worker --> PG
   PG --> Outbox["Outbox Dispatcher"]
@@ -52,6 +57,7 @@ flowchart LR
 后端按 DDD bounded context 划分：
 
 - `subscriptions`：订阅聚合与 OPML。
+- `rsshub`：实例注册、Access Key 加密和逻辑路由解析。
 - `ingestion`：Feed 条目标识、引用和元数据修订。
 - `content`：无持久化的安全原文解析。
 - `agents`：Provider、Agent Registry 与 Pi Gateway。
@@ -85,4 +91,3 @@ pnpm build
 API 文档位于 `/api/docs`。生产应用默认保护 `/api/v1/*`（除登录接口），健康检查不需要令牌。
 
 更详细的升级、备份、恢复和故障处理见 [运维手册](docs/operations.md)。
-
