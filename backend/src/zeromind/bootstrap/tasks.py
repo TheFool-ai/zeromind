@@ -47,16 +47,13 @@ class DueFeedScheduler:
         now: datetime,
         limit: int = 1000,
     ) -> tuple[Subscription, ...]:
-        due = tuple(
-            item
-            for item in await self._repository.list()
-            if item.enabled and item.next_poll_at <= now
-        )[:limit]
-        for subscription in due:
-            subscription.next_poll_at = now + POLL_INTERVAL
-            subscription.updated_at = now
-            await self._repository.save(subscription)
-        return due
+        return tuple(
+            await self._repository.claim_due(
+                now=now,
+                limit=limit,
+                lease=POLL_INTERVAL,
+            )
+        )
 
 
 async def matching_workflows(
@@ -103,7 +100,7 @@ async def _poll_feed(subscription_id: str) -> dict[str, int]:
         raise KeyError(identifier)
     checked_at = datetime.now(UTC)
     try:
-        document = await FeedClient().fetch(
+        document = await FeedClient(network_policy=NetworkPolicy()).fetch(
             subscription.feed_url,
             etag=subscription.etag,
             last_modified=subscription.last_modified,

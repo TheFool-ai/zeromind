@@ -1,6 +1,6 @@
 import uuid
 from collections.abc import Sequence
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import Protocol
 
 from sqlalchemy import select
@@ -26,6 +26,14 @@ class SubscriptionRepository(Protocol):
     async def list(self) -> Sequence[Subscription]: ...
 
     async def save(self, subscription: Subscription) -> None: ...
+
+    async def claim_due(
+        self,
+        *,
+        now: datetime,
+        limit: int,
+        lease: timedelta,
+    ) -> Sequence[Subscription]: ...
 
 
 class InMemorySubscriptionRepository:
@@ -53,6 +61,26 @@ class InMemorySubscriptionRepository:
         if subscription.id not in self._items:
             raise KeyError(subscription.id)
         self._items[subscription.id] = subscription
+
+    async def claim_due(
+        self,
+        *,
+        now: datetime,
+        limit: int,
+        lease: timedelta,
+    ) -> Sequence[Subscription]:
+        due = tuple(
+            item
+            for item in sorted(
+                self._items.values(),
+                key=lambda value: value.next_poll_at,
+            )
+            if item.enabled and item.next_poll_at <= now
+        )[:limit]
+        for item in due:
+            item.next_poll_at = now + lease
+            item.updated_at = now
+        return due
 
 
 def _as_utc(value: datetime | None) -> datetime | None:
@@ -149,3 +177,28 @@ class SqlAlchemySubscriptionRepository:
             for column in SubscriptionModel.__table__.columns:
                 if column.name != "id":
                     setattr(model, column.name, getattr(replacement, column.name))
+
+    async def claim_due(
+        self,
+        *,
+        now: datetime,
+        limit: int,
+        lease: timedelta,
+    ) -> Sequence[Subscription]:
+        async with self._sessions() as session, session.begin():
+            result = await session.scalars(
+                select(SubscriptionModel)
+                .where(
+                    SubscriptionModel.enabled.is_(True),
+                    SubscriptionModel.next_poll_at <= now,
+                )
+                .order_by(SubscriptionModel.next_poll_at)
+                .limit(limit)
+                .with_for_update(skip_locked=True)
+            )
+            models = tuple(result)
+            for model in models:
+                model.next_poll_at = now + lease
+                model.updated_at = now
+            await session.flush()
+            return tuple(_to_domain(model) for model in models)

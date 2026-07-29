@@ -68,6 +68,11 @@ class AgentListResponse(BaseModel):
     items: list[AgentResponse]
 
 
+class UpdateAgentRequest(BaseModel):
+    system_prompt: str = Field(min_length=1, max_length=50_000)
+    capabilities: tuple[str, ...]
+
+
 def create_agent_router(registry: AgentRegistry) -> APIRouter:
     router = APIRouter(prefix="/api/v1", tags=["agents"])
 
@@ -131,6 +136,45 @@ def create_agent_router(registry: AgentRegistry) -> APIRouter:
             ]
         )
 
+    @router.patch("/agents/{agent_id}", response_model=AgentResponse)
+    async def update_agent(
+        agent_id: UUID,
+        request: UpdateAgentRequest,
+    ) -> AgentDefinition:
+        try:
+            return await registry.update_agent(agent_id, **request.model_dump())
+        except KeyError as error:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail={"code": "agent_not_found"},
+            ) from error
+        except ValueError as error:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+                detail={"code": "invalid_agent", "message": str(error)},
+            ) from error
+
+    async def change_agent_enabled(
+        agent_id: UUID,
+        *,
+        enabled: bool,
+    ) -> AgentDefinition:
+        try:
+            return await registry.set_agent_enabled(agent_id, enabled=enabled)
+        except KeyError as error:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail={"code": "agent_not_found"},
+            ) from error
+
+    @router.post("/agents/{agent_id}/disable", response_model=AgentResponse)
+    async def disable_agent(agent_id: UUID) -> AgentDefinition:
+        return await change_agent_enabled(agent_id, enabled=False)
+
+    @router.post("/agents/{agent_id}/enable", response_model=AgentResponse)
+    async def enable_agent(agent_id: UUID) -> AgentDefinition:
+        return await change_agent_enabled(agent_id, enabled=True)
+
     @router.get("/agents/discover", response_model=AgentListResponse)
     async def discover_agents(
         capability: Annotated[list[str] | None, Query()] = None,
@@ -141,4 +185,3 @@ def create_agent_router(registry: AgentRegistry) -> APIRouter:
         )
 
     return router
-

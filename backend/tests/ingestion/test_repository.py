@@ -4,18 +4,21 @@ from uuid import UUID
 
 import pytest
 import pytest_asyncio
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from zeromind.ingestion.domain import FeedEntry
 from zeromind.ingestion.models import ContentReferenceModel, ReferenceRevisionModel
 from zeromind.ingestion.repository import SqlAlchemyReferenceRepository
 from zeromind.ingestion.service import IngestionService
+from zeromind.shared.models import OutboxEventModel
 
 
 @pytest_asyncio.fixture
 async def sessions() -> AsyncIterator[async_sessionmaker[AsyncSession]]:
     engine = create_async_engine("sqlite+aiosqlite:///:memory:")
     async with engine.begin() as connection:
+        await connection.run_sync(OutboxEventModel.__table__.create)
         await connection.run_sync(ContentReferenceModel.__table__.create)
         await connection.run_sync(ReferenceRevisionModel.__table__.create)
     yield async_sessionmaker(engine, expire_on_commit=False)
@@ -54,3 +57,8 @@ async def test_sql_repository_preserves_ingestion_idempotency(
     assert result.unchanged == 1
     assert len(references) == 1
     assert len(await repository.list_revisions(references[0].id)) == 1
+    async with sessions() as session:
+        event_count = await session.scalar(
+            select(func.count()).select_from(OutboxEventModel)
+        )
+    assert event_count == 1

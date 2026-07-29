@@ -22,6 +22,18 @@ export function AgentsPage() {
       api("/providers", {method: "POST", body: JSON.stringify(value)}),
     onSuccess: () => queryClient.invalidateQueries({queryKey: ["providers"]})
   });
+  const createAgent = useMutation({
+    mutationFn: (value: Record<string, unknown>) =>
+      api("/agents", {method: "POST", body: JSON.stringify(value)}),
+    onSuccess: () => queryClient.invalidateQueries({queryKey: ["agents"]})
+  });
+  const toggleAgent = useMutation({
+    mutationFn: (value: {id: string; enabled: boolean}) =>
+      api(`/agents/${value.id}/${value.enabled ? "disable" : "enable"}`, {
+        method: "POST"
+      }),
+    onSuccess: () => queryClient.invalidateQueries({queryKey: ["agents"]})
+  });
 
   function submitProvider(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -33,6 +45,24 @@ export function AgentsPage() {
       api_key_env: data.get("api_key_env"),
       thinking_level: "off",
       parameters: {}
+    });
+    event.currentTarget.reset();
+  }
+
+  function submitAgent(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const data = new FormData(event.currentTarget);
+    createAgent.mutate({
+      name: data.get("name"),
+      description: data.get("description"),
+      capabilities: String(data.get("capabilities"))
+        .split(",")
+        .map((value) => value.trim())
+        .filter(Boolean),
+      system_prompt: data.get("system_prompt"),
+      provider_profile_id: data.get("provider_profile_id"),
+      input_schema: {type: "object"},
+      output_schema: {type: "object"}
     });
     event.currentTarget.reset();
   }
@@ -72,23 +102,55 @@ export function AgentsPage() {
           </Panel>
         </div>
       ) : (
-        <Panel title="已注册 Agent">
-          {agents.error ? <ErrorNotice error={agents.error} /> : null}
-          {!agents.isLoading && !agents.data?.items.length ? (
-            <Empty>尚未注册 Agent。先配置 Provider，再通过 API 或此控制台注册分析 Agent。</Empty>
-          ) : (
-            <div className="card-grid">
-              {agents.data?.items.map((item) => (
-                <article className="agent-card" key={item.id}>
-                  <div className="card-top"><Status value={item.enabled ? "enabled" : "disabled"} /><span>v{item.version}</span></div>
-                  <h2>{item.name}</h2>
-                  <p>{item.description}</p>
-                  <div className="tag-list">{item.capabilities.map((capability) => <span key={capability}>{capability}</span>)}</div>
-                </article>
-              ))}
-            </div>
-          )}
-        </Panel>
+        <>
+          <div className="split">
+            <Panel title="注册 Agent">
+              <form className="form-stack" onSubmit={submitAgent}>
+                <label>名称<input name="name" required placeholder="summarizer" /></label>
+                <label>说明<input name="description" required placeholder="生成中文结构化摘要" /></label>
+                <label>能力（逗号分隔）<input name="capabilities" required placeholder="summarize, zh" /></label>
+                <label>
+                  Provider
+                  <select name="provider_profile_id" required defaultValue="">
+                    <option value="" disabled>选择 Provider</option>
+                    {providers.data?.items.map((item) => (
+                      <option key={item.id} value={item.id}>{item.name} · {item.model}</option>
+                    ))}
+                  </select>
+                </label>
+                <label>System prompt<textarea name="system_prompt" required placeholder="只返回符合 JSON Schema 的分析结果。" /></label>
+                <button disabled={!providers.data?.items.length}>注册 Agent</button>
+                {createAgent.error ? <ErrorNotice error={createAgent.error} /> : null}
+              </form>
+            </Panel>
+            <Panel>
+              <Empty>Agent 的输入输出 Schema 默认从宽。需要严格契约时，可通过 API 更新为具体 JSON Schema。</Empty>
+            </Panel>
+          </div>
+          <Panel title="已注册 Agent">
+            {agents.error ? <ErrorNotice error={agents.error} /> : null}
+            {!agents.isLoading && !agents.data?.items.length ? (
+              <Empty>尚未注册 Agent。先配置 Provider，再注册分析 Agent。</Empty>
+            ) : (
+              <div className="card-grid">
+                {agents.data?.items.map((item) => (
+                  <article className="agent-card" key={item.id}>
+                    <div className="card-top"><Status value={item.enabled ? "enabled" : "disabled"} /><span>v{item.version}</span></div>
+                    <h2>{item.name}</h2>
+                    <p>{item.description}</p>
+                    <div className="tag-list">{item.capabilities.map((capability) => <span key={capability}>{capability}</span>)}</div>
+                    <button
+                      className="tiny secondary card-action"
+                      onClick={() => toggleAgent.mutate({id: item.id, enabled: item.enabled})}
+                    >
+                      {item.enabled ? "停用 Agent" : "启用 Agent"}
+                    </button>
+                  </article>
+                ))}
+              </div>
+            )}
+          </Panel>
+        </>
       )}
     </>
   );

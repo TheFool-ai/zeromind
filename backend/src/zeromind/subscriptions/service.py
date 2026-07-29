@@ -1,3 +1,4 @@
+import uuid
 from dataclasses import dataclass
 
 from zeromind.subscriptions.domain import (
@@ -49,6 +50,22 @@ class SubscriptionService:
 
     async def list(self) -> tuple[Subscription, ...]:
         return tuple(await self._repository.list())
+
+    async def set_enabled(
+        self,
+        subscription_id: uuid.UUID,
+        *,
+        enabled: bool,
+    ) -> Subscription:
+        subscription = await self._repository.get(subscription_id)
+        if subscription is None:
+            raise KeyError(subscription_id)
+        if enabled:
+            subscription.enable()
+        else:
+            subscription.disable()
+        await self._repository.save(subscription)
+        return subscription
 
     async def import_entries(self, entries: tuple[OpmlEntry, ...]) -> ImportResult:
         created = 0

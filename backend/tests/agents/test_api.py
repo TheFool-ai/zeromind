@@ -54,3 +54,46 @@ def test_register_and_discover_agent_without_exposing_secret() -> None:
     assert "api_key_value" not in provider.json()
     assert created.status_code == 201
     assert [item["name"] for item in discovered.json()["items"]] == ["summarizer"]
+
+
+def test_update_and_disable_agent_changes_version_and_discovery() -> None:
+    client = make_client()
+    profile_id = client.post(
+        "/api/v1/providers",
+        json={
+            "name": "default",
+            "provider": "openai",
+            "model": "gpt-5-mini",
+            "api_key_env": "OPENAI_API_KEY",
+        },
+    ).json()["id"]
+    agent_id = client.post(
+        "/api/v1/agents",
+        json={
+            "name": "summarizer",
+            "description": "Summarizes",
+            "capabilities": ["summarize"],
+            "system_prompt": "Return JSON.",
+            "provider_profile_id": profile_id,
+            "input_schema": {"type": "object"},
+            "output_schema": {"type": "object"},
+        },
+    ).json()["id"]
+
+    updated = client.patch(
+        f"/api/v1/agents/{agent_id}",
+        json={
+            "system_prompt": "Return concise JSON.",
+            "capabilities": ["summarize", "zh"],
+        },
+    )
+    disabled = client.post(f"/api/v1/agents/{agent_id}/disable")
+    discovered = client.get(
+        "/api/v1/agents/discover",
+        params={"capability": "summarize"},
+    )
+
+    assert updated.json()["version"] == 2
+    assert updated.json()["capabilities"] == ["summarize", "zh"]
+    assert disabled.json()["enabled"] is False
+    assert discovered.json()["items"] == []

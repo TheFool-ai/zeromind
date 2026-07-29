@@ -46,6 +46,13 @@ export function SubscriptionsPage() {
       queryClient.invalidateQueries({queryKey: ["subscriptions"]});
     }
   });
+  const toggle = useMutation({
+    mutationFn: (value: {id: string; enabled: boolean}) =>
+      api(`/subscriptions/${value.id}/${value.enabled ? "disable" : "enable"}`, {
+        method: "POST"
+      }),
+    onSuccess: () => queryClient.invalidateQueries({queryKey: ["subscriptions"]})
+  });
 
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -123,7 +130,7 @@ export function SubscriptionsPage() {
         ) : (
           <div className="table-wrap">
             <table>
-              <thead><tr><th>名称</th><th>Feed</th><th>健康</th><th>下次轮询</th><th>失败</th></tr></thead>
+              <thead><tr><th>名称</th><th>Feed</th><th>健康</th><th>下次轮询</th><th>失败</th><th>操作</th></tr></thead>
               <tbody>
                 {subscriptions.data?.items.map((item) => (
                   <tr key={item.id}>
@@ -132,6 +139,14 @@ export function SubscriptionsPage() {
                     <td><Status value={item.health} /></td>
                     <td>{formatTime(item.next_poll_at)}</td>
                     <td>{item.consecutive_failures}</td>
+                    <td>
+                      <button
+                        className="tiny secondary"
+                        onClick={() => toggle.mutate({id: item.id, enabled: item.enabled})}
+                      >
+                        {item.enabled ? "停用" : "启用"}
+                      </button>
+                    </td>
                   </tr>
                 ))}
               </tbody>

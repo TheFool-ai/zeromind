@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from zeromind.ingestion.domain import ContentReference, ReferenceRevision
 from zeromind.ingestion.models import ContentReferenceModel, ReferenceRevisionModel
+from zeromind.shared.models import OutboxEventModel
 
 
 class ReferenceRepository(Protocol):
@@ -173,6 +174,28 @@ def _revision_model(revision: ReferenceRevision) -> ReferenceRevisionModel:
     )
 
 
+def _outbox_model(
+    *,
+    event_type: str,
+    reference: ContentReference,
+    revision: ReferenceRevision,
+) -> OutboxEventModel:
+    return OutboxEventModel(
+        event_type=event_type,
+        aggregate_type="reference",
+        aggregate_id=str(reference.id),
+        payload={
+            "reference_id": str(reference.id),
+            "revision": revision.number,
+        },
+        idempotency_key=f"{event_type}:{reference.id}:{revision.number}",
+        status="pending",
+        attempts=0,
+        occurred_at=revision.observed_at,
+        available_at=revision.observed_at,
+    )
+
+
 class SqlAlchemyReferenceRepository:
     def __init__(self, sessions: async_sessionmaker[AsyncSession]) -> None:
         self._sessions = sessions
@@ -199,6 +222,13 @@ class SqlAlchemyReferenceRepository:
         async with self._sessions() as session, session.begin():
             session.add(_reference_model(reference))
             session.add(_revision_model(revision))
+            session.add(
+                _outbox_model(
+                    event_type="reference.discovered",
+                    reference=reference,
+                    revision=revision,
+                )
+            )
 
     async def add_revision(
         self,
@@ -213,6 +243,13 @@ class SqlAlchemyReferenceRepository:
             model.original_url = reference.original_url
             model.last_seen_at = reference.last_seen_at
             session.add(_revision_model(revision))
+            session.add(
+                _outbox_model(
+                    event_type="reference.updated",
+                    reference=reference,
+                    revision=revision,
+                )
+            )
 
     async def get_current_revision(self, reference_id: uuid.UUID) -> ReferenceRevision:
         async with self._sessions() as session:

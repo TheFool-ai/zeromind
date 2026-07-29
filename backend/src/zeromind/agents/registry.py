@@ -27,6 +27,8 @@ class AgentRepository(Protocol):
 
     async def list_agents(self) -> tuple[AgentDefinition, ...]: ...
 
+    async def save_agent(self, definition: AgentDefinition) -> None: ...
+
 
 class InMemoryAgentRepository:
     def __init__(self) -> None:
@@ -59,6 +61,11 @@ class InMemoryAgentRepository:
     async def list_agents(self) -> tuple[AgentDefinition, ...]:
         return tuple(sorted(self._agents.values(), key=lambda item: item.name))
 
+    async def save_agent(self, definition: AgentDefinition) -> None:
+        if definition.id not in self._agents:
+            raise KeyError(definition.id)
+        self._agents[definition.id] = definition
+
 
 class AgentRegistry:
     def __init__(self, repository: AgentRepository) -> None:
@@ -89,6 +96,35 @@ class AgentRegistry:
 
     async def list_agents(self) -> tuple[AgentDefinition, ...]:
         return await self._repository.list_agents()
+
+    async def update_agent(
+        self,
+        agent_id: uuid.UUID,
+        *,
+        system_prompt: str,
+        capabilities: tuple[str, ...],
+    ) -> AgentDefinition:
+        definition = await self.get_agent(agent_id)
+        definition.update(
+            system_prompt=system_prompt,
+            capabilities=capabilities,
+        )
+        await self._repository.save_agent(definition)
+        return definition
+
+    async def set_agent_enabled(
+        self,
+        agent_id: uuid.UUID,
+        *,
+        enabled: bool,
+    ) -> AgentDefinition:
+        definition = await self.get_agent(agent_id)
+        if enabled:
+            definition.enable()
+        else:
+            definition.disable()
+        await self._repository.save_agent(definition)
+        return definition
 
     async def discover(
         self,
@@ -210,3 +246,19 @@ class SqlAlchemyAgentRepository:
                 select(AgentDefinitionModel).order_by(AgentDefinitionModel.name)
             )
             return tuple(_agent_domain(model) for model in models)
+
+    async def save_agent(self, definition: AgentDefinition) -> None:
+        async with self._sessions() as session, session.begin():
+            model = await session.get(AgentDefinitionModel, definition.id)
+            if model is None:
+                raise KeyError(definition.id)
+            model.name = definition.name
+            model.description = definition.description
+            model.capabilities = list(definition.capabilities)
+            model.system_prompt = definition.system_prompt
+            model.provider_profile_id = definition.provider_profile_id
+            model.input_schema = definition.input_schema
+            model.output_schema = definition.output_schema
+            model.enabled = definition.enabled
+            model.version = definition.version
+            model.updated_at = definition.updated_at

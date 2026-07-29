@@ -1,0 +1,24 @@
+name: article-analysis
+trigger:
+  events:
+    - reference.discovered
+nodes:
+  - id: resolve
+    type: resolve
+    input:
+      reference_id: $.trigger.reference_id
+    timeout_seconds: 30
+  - id: summarize
+    type: agent
+    agent_id: 00000000-0000-0000-0000-000000000000
+    depends_on:
+      - resolve
+    input:
+      document: $.steps.resolve
+    timeout_seconds: 120
+    retry:
+      max_attempts: 3
+      backoff_seconds: 2
+output:
+  analysis: $.steps.summarize
+

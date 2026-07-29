@@ -1,4 +1,5 @@
 from collections.abc import AsyncIterator
+from datetime import UTC, datetime, timedelta
 
 import pytest
 import pytest_asyncio
@@ -45,3 +46,31 @@ async def test_repository_converts_unique_violation_to_domain_error(
 
     with pytest.raises(DuplicateSubscriptionError):
         await repository.add(duplicate)
+
+
+@pytest.mark.asyncio
+async def test_repository_atomically_leases_due_subscriptions(
+    sessions: async_sessionmaker[AsyncSession],
+) -> None:
+    repository = SqlAlchemySubscriptionRepository(sessions)
+    now = datetime(2026, 7, 29, 12, tzinfo=UTC)
+    subscription = Subscription.create(
+        feed_url="https://example.com/feed",
+        title="Due",
+        now=now,
+    )
+    await repository.add(subscription)
+
+    first = await repository.claim_due(
+        now=now,
+        limit=10,
+        lease=timedelta(minutes=30),
+    )
+    second = await repository.claim_due(
+        now=now,
+        limit=10,
+        lease=timedelta(minutes=30),
+    )
+
+    assert [item.id for item in first] == [subscription.id]
+    assert second == ()

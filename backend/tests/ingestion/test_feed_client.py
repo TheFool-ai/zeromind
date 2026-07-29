@@ -1,6 +1,7 @@
 import httpx
 import pytest
 
+from zeromind.content.network_policy import BlockedNetworkTarget, NetworkPolicy
 from zeromind.ingestion.feed_client import FeedClient, FeedNotModified
 
 
@@ -50,3 +51,23 @@ async def test_feed_client_parses_rss_entries() -> None:
     assert result.entries[0].guid == "post-42"
     assert result.entries[0].title == "Post 42"
     assert result.entries[0].url == "https://example.com/42"
+
+
+@pytest.mark.asyncio
+async def test_feed_client_revalidates_redirects_against_ssrf_policy() -> None:
+    async def addresses(host: str) -> tuple[str, ...]:
+        return ("127.0.0.1",) if host == "internal.example" else ("93.184.216.34",)
+
+    async def handler(_: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            302,
+            headers={"location": "http://internal.example/feed"},
+        )
+
+    client = FeedClient(
+        transport=httpx.MockTransport(handler),
+        network_policy=NetworkPolicy(resolver=addresses),
+    )
+
+    with pytest.raises(BlockedNetworkTarget):
+        await client.fetch("https://example.com/feed.xml")

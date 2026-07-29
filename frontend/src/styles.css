@@ -15,7 +15,7 @@
 
 * { box-sizing: border-box; }
 body { margin: 0; min-width: 320px; min-height: 100vh; }
-button, input, textarea { font: inherit; }
+button, input, textarea, select { font: inherit; }
 button {
   border: 1px solid var(--ink); background: var(--ink); color: white;
   padding: .72rem 1rem; cursor: pointer; border-radius: 3px; font-weight: 600;
@@ -81,7 +81,7 @@ h3 { font-size: .8rem; margin: 2rem 0 .8rem; text-transform: uppercase; letter-s
 .split, .workflow-layout, .run-layout { display: grid; grid-template-columns: 1fr 1.35fr; gap: 1rem; margin-bottom: 1rem; align-items: start; }
 .form-stack { display: grid; gap: .9rem; }
 label { display: grid; gap: .4rem; font-size: .75rem; color: var(--muted); font-weight: 600; }
-input, textarea {
+input, textarea, select {
   width: 100%; border: 1px solid var(--line); background: white; color: var(--ink);
   padding: .72rem; border-radius: 2px; outline: none;
 }
@@ -110,6 +110,7 @@ td a { display: block; max-width: 340px; overflow: hidden; text-overflow: ellips
 .agent-card p { color: var(--muted); font-size: .8rem; min-height: 2.5rem; }
 .tag-list { display: flex; flex-wrap: wrap; gap: .4rem; }
 .tag-list span { border: 1px solid var(--line); padding: .2rem .4rem; font-size: .65rem; }
+.card-action { margin-top: 1rem; }
 .segmented { display: flex; border: 1px solid var(--line); }
 .segmented button { border: 0; border-radius: 0; background: transparent; color: var(--muted); }
 .segmented button.active { background: var(--ink); color: white; }

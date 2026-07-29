@@ -28,6 +28,22 @@ def test_create_and_list_subscription() -> None:
     assert [item["title"] for item in listed.json()["items"]] == ["Example"]
 
 
+def test_disable_and_enable_subscription() -> None:
+    client = make_client()
+    created = client.post(
+        "/api/v1/subscriptions",
+        json={"feed_url": "https://example.com/feed", "title": "Example"},
+    )
+    identifier = created.json()["id"]
+
+    disabled = client.post(f"/api/v1/subscriptions/{identifier}/disable")
+    enabled = client.post(f"/api/v1/subscriptions/{identifier}/enable")
+
+    assert disabled.json()["enabled"] is False
+    assert disabled.json()["health"] == "disabled"
+    assert enabled.json()["enabled"] is True
+
+
 def test_create_duplicate_returns_conflict() -> None:
     client = make_client()
     payload = {"feed_url": "https://example.com/feed", "title": "Example"}

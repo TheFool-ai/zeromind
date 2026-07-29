@@ -145,6 +145,35 @@ def create_subscription_router(service: SubscriptionService) -> APIRouter:
             ]
         )
 
+    async def change_enabled(
+        subscription_id: UUID,
+        *,
+        enabled: bool,
+    ) -> SubscriptionResponse:
+        try:
+            subscription = await service.set_enabled(
+                subscription_id,
+                enabled=enabled,
+            )
+        except KeyError as error:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail={"code": "subscription_not_found"},
+            ) from error
+        return SubscriptionResponse.from_domain(subscription)
+
+    @router.post("/{subscription_id}/disable", response_model=SubscriptionResponse)
+    async def disable_subscription(
+        subscription_id: UUID,
+    ) -> SubscriptionResponse:
+        return await change_enabled(subscription_id, enabled=False)
+
+    @router.post("/{subscription_id}/enable", response_model=SubscriptionResponse)
+    async def enable_subscription(
+        subscription_id: UUID,
+    ) -> SubscriptionResponse:
+        return await change_enabled(subscription_id, enabled=True)
+
     async def read_preview(file: UploadFile) -> OpmlPreview:
         try:
             return preview_opml(await file.read())
