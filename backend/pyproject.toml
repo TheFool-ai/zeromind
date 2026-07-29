@@ -1,0 +1,57 @@
+[build-system]
+requires = ["hatchling>=1.27"]
+build-backend = "hatchling.build"
+
+[project]
+name = "zeromind"
+version = "0.1.0"
+description = "Reference-first RSS information collection and agent workflow platform"
+requires-python = ">=3.12"
+dependencies = [
+  "alembic>=1.16,<2",
+  "celery[redis]>=5.5,<6",
+  "defusedxml>=0.7,<1",
+  "fastapi>=0.116,<1",
+  "feedparser>=6.0,<7",
+  "httpx>=0.28,<1",
+  "itsdangerous>=2.2,<3",
+  "jsonschema>=4.24,<5",
+  "psycopg[binary]>=3.2,<4",
+  "pydantic-settings>=2.10,<3",
+  "python-multipart>=0.0.20,<1",
+  "pyyaml>=6.0,<7",
+  "sqlalchemy>=2.0.41,<3",
+  "structlog>=25.4,<26",
+  "trafilatura>=2.0,<3",
+  "uvicorn[standard]>=0.35,<1",
+]
+
+[project.optional-dependencies]
+dev = [
+  "aiosqlite>=0.21,<1",
+  "mypy>=1.17,<2",
+  "pytest>=8.4,<9",
+  "pytest-asyncio>=1.1,<2",
+  "pytest-cov>=6.2,<7",
+  "ruff>=0.12,<1",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/zeromind"]
+
+[tool.pytest.ini_options]
+addopts = "-ra"
+pythonpath = ["src"]
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM"]
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+packages = ["zeromind"]
