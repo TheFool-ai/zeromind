@@ -12,6 +12,12 @@ from zeromind.agents.registry import (
     InMemoryAgentRepository,
     SqlAlchemyAgentRepository,
 )
+from zeromind.analysis.projector import AnalysisProjector
+from zeromind.analysis.repository import (
+    AnalysisRepository,
+    InMemoryAnalysisRepository,
+    SqlAlchemyAnalysisRepository,
+)
 from zeromind.bootstrap.runtime import build_workflow_executor
 from zeromind.content.network_policy import NetworkPolicy
 from zeromind.delivery.api import create_delivery_router
@@ -38,15 +44,19 @@ from zeromind.rsshub.service import RSSHubInstanceService
 from zeromind.shared.config import get_settings
 from zeromind.shared.database import Database, create_database
 from zeromind.subscriptions.api import create_subscription_router
-from zeromind.subscriptions.repository import SqlAlchemySubscriptionRepository
+from zeromind.subscriptions.repository import (
+    InMemorySubscriptionRepository,
+    SqlAlchemySubscriptionRepository,
+    SubscriptionRepository,
+)
 from zeromind.subscriptions.service import SubscriptionService
 from zeromind.workflows.api import create_workflow_router
-from zeromind.workflows.executor import WorkflowExecutor
 from zeromind.workflows.repository import (
     InMemoryWorkflowRepository,
     SqlAlchemyWorkflowRepository,
     WorkflowRepository,
 )
+from zeromind.workflows.service import WorkflowRunService
 
 DependencyState = Literal["up", "down", "unknown"]
 ReadinessProbe = Callable[[], dict[str, DependencyState]]
@@ -68,11 +78,13 @@ def _default_readiness_probe() -> dict[str, DependencyState]:
 def create_app(
     readiness_probe: ReadinessProbe | None = None,
     subscription_service: SubscriptionService | None = None,
+    subscription_repository: SubscriptionRepository | None = None,
     database: Database | None = None,
     reference_repository: ReferenceRepository | None = None,
     agent_registry: AgentRegistry | None = None,
     workflow_repository: WorkflowRepository | None = None,
-    workflow_executor: WorkflowExecutor | None = None,
+    analysis_repository: AnalysisRepository | None = None,
+    workflow_run_service: WorkflowRunService | None = None,
     token_service: TokenService | None = None,
     webhook_repository: WebhookRepository | None = None,
     webhook_network_policy: NetworkPolicy | None = None,
@@ -80,10 +92,15 @@ def create_app(
     require_auth: bool = False,
 ) -> FastAPI:
     resolved_database = database
+    resolved_subscription_repository = subscription_repository
     if subscription_service is None:
-        resolved_database = resolved_database or create_database()
+        if resolved_subscription_repository is None:
+            resolved_database = resolved_database or create_database()
+            resolved_subscription_repository = SqlAlchemySubscriptionRepository(
+                resolved_database.sessions
+            )
         subscription_service = SubscriptionService(
-            SqlAlchemySubscriptionRepository(resolved_database.sessions)
+            resolved_subscription_repository
         )
 
     @asynccontextmanager
@@ -159,16 +176,35 @@ def create_app(
             if resolved_database is not None
             else InMemoryWorkflowRepository()
         )
-    workflow_executor = workflow_executor or build_workflow_executor(
-        workflow_repository=workflow_repository,
-        reference_repository=reference_repository,
-        agent_registry=agent_registry,
-        settings=get_settings(),
-    )
+    if analysis_repository is None:
+        analysis_repository = (
+            SqlAlchemyAnalysisRepository(resolved_database.sessions)
+            if resolved_database is not None
+            else InMemoryAnalysisRepository()
+        )
+    if workflow_run_service is None:
+        workflow_executor = build_workflow_executor(
+            workflow_repository=workflow_repository,
+            reference_repository=reference_repository,
+            agent_registry=agent_registry,
+            settings=get_settings(),
+        )
+        workflow_run_service = WorkflowRunService(
+            workflow_repository,
+            workflow_executor,
+            projectors={
+                "content_analysis_v1": AnalysisProjector(
+                    analysis_repository,
+                    reference_repository,
+                    resolved_subscription_repository
+                    or InMemorySubscriptionRepository(),
+                )
+            },
+        )
     app.include_router(
         create_workflow_router(
             workflow_repository,
-            workflow_executor,
+            workflow_run_service,
             agent_registry,
         )
     )

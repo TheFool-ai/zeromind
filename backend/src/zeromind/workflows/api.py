@@ -12,8 +12,8 @@ from zeromind.workflows.dsl import (
     parse_workflow_yaml,
     validate_workflow,
 )
-from zeromind.workflows.executor import WorkflowExecutor
 from zeromind.workflows.repository import WorkflowRepository
+from zeromind.workflows.service import WorkflowRunService
 
 
 class WorkflowSourceRequest(BaseModel):
@@ -108,7 +108,7 @@ def _validation_warnings(spec: WorkflowSpec) -> tuple[str, ...]:
 
 def create_workflow_router(
     repository: WorkflowRepository,
-    executor: WorkflowExecutor,
+    run_service: WorkflowRunService,
     agent_registry: AgentRegistry,
 ) -> APIRouter:
     router = APIRouter(prefix="/api/v1", tags=["workflows"])
@@ -190,7 +190,7 @@ def create_workflow_router(
             raise HTTPException(status_code=404, detail={"code": "workflow_not_found"})
         if definition.status != "active":
             raise HTTPException(status_code=409, detail={"code": "workflow_not_active"})
-        return await executor.execute(
+        return await run_service.execute(
             definition_id,
             trigger={"event": "manual", **request.trigger},
             idempotency_key=request.idempotency_key,

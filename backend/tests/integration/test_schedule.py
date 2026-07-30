@@ -1,10 +1,12 @@
 from datetime import UTC, datetime, timedelta
+from uuid import UUID
 
 import httpx
 import pytest
 
 from zeromind.bootstrap.tasks import (
     DueFeedScheduler,
+    dispatch_workflow_event,
     fetch_subscription_document,
     matching_workflows,
     overlap_window_start,
@@ -14,9 +16,10 @@ from zeromind.rsshub.credentials import CredentialCipher
 from zeromind.rsshub.repository import InMemoryRSSHubInstanceRepository
 from zeromind.rsshub.resolver import RSSHubResolver
 from zeromind.rsshub.service import RSSHubInstanceService
+from zeromind.shared.outbox import InMemoryOutboxRepository
 from zeromind.subscriptions.domain import Subscription
 from zeromind.subscriptions.repository import InMemorySubscriptionRepository
-from zeromind.workflows.domain import WorkflowDefinition
+from zeromind.workflows.domain import WorkflowDefinition, WorkflowRun
 from zeromind.workflows.dsl import parse_workflow_yaml
 from zeromind.workflows.repository import InMemoryWorkflowRepository
 
@@ -122,3 +125,112 @@ nodes: [{id: noop, type: parallel}]
     matched = await matching_workflows(repository, "reference.updated")
 
     assert [item.name for item in matched] == ["updates"]
+
+
+class SuccessfulRunService:
+    async def execute(
+        self,
+        definition_id: UUID,
+        *,
+        trigger: dict[str, object],
+        idempotency_key: str,
+    ) -> WorkflowRun:
+        now = datetime(2026, 7, 31, 3, tzinfo=UTC)
+        return WorkflowRun(
+            id=UUID("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"),
+            definition_id=definition_id,
+            definition_version=1,
+            idempotency_key=idempotency_key,
+            trigger=trigger,
+            status="completed",
+            output={"status": "qualified"},
+            error=None,
+            started_at=now,
+            completed_at=now,
+        )
+
+
+class FailedProjectionRunService:
+    async def execute(
+        self,
+        definition_id: UUID,
+        *,
+        trigger: dict[str, object],
+        idempotency_key: str,
+    ) -> WorkflowRun:
+        raise ValueError("analysis_projection_invalid: invalid output")
+
+
+@pytest.mark.asyncio
+async def test_worker_enqueues_completion_only_after_run_service_succeeds() -> None:
+    workflows = InMemoryWorkflowRepository()
+    definition = WorkflowDefinition.create(
+        parse_workflow_yaml(
+            """
+name: projected
+trigger: {events: [reference.discovered]}
+nodes: [{id: noop, type: parallel}]
+"""
+        )
+    )
+    definition.activate()
+    await workflows.add_definition(definition)
+    outbox = InMemoryOutboxRepository()
+
+    await dispatch_workflow_event(
+        workflows,
+        SuccessfulRunService(),  # type: ignore[arg-type]
+        outbox,
+        event_type="reference.discovered",
+        payload={
+            "reference_id": "11111111-1111-1111-1111-111111111111",
+            "revision": 1,
+        },
+    )
+
+    events = await outbox.claim(
+        now=datetime(2026, 7, 31, 4, tzinfo=UTC),
+        limit=10,
+        lease=timedelta(minutes=1),
+    )
+    assert len(events) == 1
+    assert events[0].event_type == "workflow.completed"
+    assert events[0].payload["result"] == {"status": "qualified"}
+
+
+@pytest.mark.asyncio
+async def test_worker_does_not_enqueue_completion_after_projection_failure() -> None:
+    workflows = InMemoryWorkflowRepository()
+    definition = WorkflowDefinition.create(
+        parse_workflow_yaml(
+            """
+name: projected-failure
+trigger: {events: [reference.discovered]}
+nodes: [{id: noop, type: parallel}]
+"""
+        )
+    )
+    definition.activate()
+    await workflows.add_definition(definition)
+    outbox = InMemoryOutboxRepository()
+
+    with pytest.raises(ValueError, match="analysis_projection_invalid"):
+        await dispatch_workflow_event(
+            workflows,
+            FailedProjectionRunService(),  # type: ignore[arg-type]
+            outbox,
+            event_type="reference.discovered",
+            payload={
+                "reference_id": "11111111-1111-1111-1111-111111111111",
+                "revision": 1,
+            },
+        )
+
+    assert (
+        await outbox.claim(
+            now=datetime(2026, 7, 31, 4, tzinfo=UTC),
+            limit=10,
+            lease=timedelta(minutes=1),
+        )
+        == ()
+    )

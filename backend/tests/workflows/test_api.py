@@ -1,12 +1,21 @@
+import asyncio
+from datetime import UTC, datetime
+
+import yaml
 from fastapi.testclient import TestClient
 
 from zeromind.agents.registry import AgentRegistry, InMemoryAgentRepository
+from zeromind.analysis.repository import AnalysisQuery, InMemoryAnalysisRepository
 from zeromind.bootstrap.app import create_app
+from zeromind.ingestion.domain import FeedEntry
 from zeromind.ingestion.repository import InMemoryReferenceRepository
+from zeromind.ingestion.service import IngestionService
+from zeromind.subscriptions.domain import Subscription
 from zeromind.subscriptions.repository import InMemorySubscriptionRepository
 from zeromind.subscriptions.service import SubscriptionService
 from zeromind.workflows.executor import WorkflowExecutor
 from zeromind.workflows.repository import InMemoryWorkflowRepository
+from zeromind.workflows.service import WorkflowRunService
 
 SOURCE = """
 name: manual-copy
@@ -27,6 +36,10 @@ def make_client() -> TestClient:
     async def copy_handler(value: dict[str, object]) -> dict[str, object]:
         return value
 
+    executor = WorkflowExecutor(
+        repository,
+        handlers={"parallel": copy_handler},
+    )
     return TestClient(
         create_app(
             subscription_service=SubscriptionService(
@@ -35,9 +48,10 @@ def make_client() -> TestClient:
             reference_repository=InMemoryReferenceRepository(),
             agent_registry=AgentRegistry(InMemoryAgentRepository()),
             workflow_repository=repository,
-            workflow_executor=WorkflowExecutor(
+            workflow_run_service=WorkflowRunService(
                 repository,
-                handlers={"parallel": copy_handler},
+                executor,
+                projectors={},
             ),
         )
     )
@@ -113,3 +127,109 @@ output: {schema_version: 1, status: qualified}
     assert len(response.json()["warnings"]) == 1
     assert "quality_gate" in response.json()["warnings"][0]
     assert "101" in response.json()["warnings"][0]
+
+
+def test_manual_api_run_uses_default_analysis_projector() -> None:
+    async def arrange() -> tuple[
+        InMemorySubscriptionRepository,
+        InMemoryReferenceRepository,
+        Subscription,
+        object,
+    ]:
+        subscriptions = InMemorySubscriptionRepository()
+        subscription = Subscription.create(
+            feed_url="https://example.com/feed",
+            title="Example Engineering",
+        )
+        await subscriptions.add(subscription)
+        references = InMemoryReferenceRepository()
+        await IngestionService(references).ingest(
+            subscription_id=subscription.id,
+            entries=(
+                FeedEntry(
+                    guid="api-projection",
+                    url="https://example.com/api-projection",
+                    title="API projection",
+                    summary="RSS summary",
+                    author="Ada",
+                    published_at=datetime(2026, 7, 31, tzinfo=UTC),
+                    updated_at=None,
+                ),
+            ),
+            fetched_at=datetime(2026, 7, 31, 1, tzinfo=UTC),
+        )
+        reference = (await references.list_references())[0]
+        return subscriptions, references, subscription, reference
+
+    subscriptions, references, subscription, reference = asyncio.run(arrange())
+    analyses = InMemoryAnalysisRepository()
+    output = {
+        "schema_version": 1,
+        "status": "initial_rejected",
+        "reference": {
+            "reference_id": str(reference.id),
+            "revision": 1,
+            "subscription_id": str(subscription.id),
+            "url": "https://example.com/api-projection",
+            "title": "API projection",
+            "summary": "RSS summary",
+            "author": "Ada",
+            "published_at": "2026-07-31T00:00:00+00:00",
+            "updated_at": None,
+            "observed_at": "2026-07-31T01:00:00+00:00",
+        },
+        "screening": {
+            "score": 10,
+            "reason": "Low information density",
+            "summary": "A low-value update",
+            "_execution": {
+                "agent_id": "33333333-3333-3333-3333-333333333333",
+                "agent_version": 1,
+                "provider": "openai",
+                "model": "gpt-5-mini",
+                "usage": {},
+            },
+        },
+    }
+    source = yaml.safe_dump(
+        {
+            "name": "manual-projection",
+            "trigger": {"events": ["manual"]},
+            "projection": "content_analysis_v1",
+            "nodes": [{"id": "noop", "type": "parallel"}],
+            "output": output,
+        },
+        sort_keys=False,
+    )
+    client = TestClient(
+        create_app(
+            subscription_service=SubscriptionService(subscriptions),
+            subscription_repository=subscriptions,
+            reference_repository=references,
+            agent_registry=AgentRegistry(InMemoryAgentRepository()),
+            workflow_repository=InMemoryWorkflowRepository(),
+            analysis_repository=analyses,
+        )
+    )
+
+    created = client.post("/api/v1/workflows", json={"source": source})
+    workflow_id = created.json()["id"]
+    client.post(f"/api/v1/workflows/{workflow_id}/activate")
+    run = client.post(
+        f"/api/v1/workflows/{workflow_id}/runs",
+        json={
+            "idempotency_key": "manual:projected",
+            "trigger": {
+                "reference_id": str(reference.id),
+                "revision": 1,
+            },
+        },
+    )
+
+    projected = asyncio.run(
+        analyses.list(AnalysisQuery(effective_decision=None))
+    )
+    assert run.status_code == 201
+    assert run.json()["status"] == "completed"
+    assert len(projected) == 1
+    assert projected[0].source_name == "Example Engineering"

@@ -3,6 +3,8 @@ import uuid
 from datetime import UTC, datetime, timedelta
 
 from zeromind.agents.registry import AgentRegistry, SqlAlchemyAgentRepository
+from zeromind.analysis.projector import AnalysisProjector
+from zeromind.analysis.repository import SqlAlchemyAnalysisRepository
 from zeromind.bootstrap.celery import celery_app
 from zeromind.bootstrap.runtime import build_workflow_executor
 from zeromind.content.network_policy import NetworkPolicy
@@ -19,6 +21,7 @@ from zeromind.shared.database import create_database
 from zeromind.shared.outbox import (
     EventHandler,
     OutboxDispatcher,
+    OutboxRepository,
     SqlAlchemyOutboxRepository,
 )
 from zeromind.subscriptions.domain import Subscription
@@ -31,6 +34,7 @@ from zeromind.workflows.repository import (
     SqlAlchemyWorkflowRepository,
     WorkflowRepository,
 )
+from zeromind.workflows.service import WorkflowRunService
 
 POLL_INTERVAL = timedelta(minutes=30)
 OVERLAP = timedelta(minutes=10)
@@ -69,6 +73,42 @@ async def matching_workflows(
         if definition.status == "active"
         and event_type in definition.spec.trigger.events
     )
+
+
+async def dispatch_workflow_event(
+    workflows: WorkflowRepository,
+    run_service: WorkflowRunService,
+    outbox: OutboxRepository,
+    *,
+    event_type: str,
+    payload: dict[str, object],
+) -> int:
+    completed = 0
+    for definition in await matching_workflows(workflows, event_type):
+        reference_id = str(payload["reference_id"])
+        revision = int(str(payload["revision"]))
+        key = (
+            f"{event_type}:{reference_id}:{revision}:"
+            f"{definition.id}:{definition.version}"
+        )
+        run = await run_service.execute(
+            definition.id,
+            trigger={"event": event_type, **payload},
+            idempotency_key=key,
+        )
+        await outbox.enqueue(
+            event_type="workflow.completed",
+            aggregate_type="workflow_run",
+            aggregate_id=str(run.id),
+            payload={
+                "run_id": str(run.id),
+                "workflow_id": str(definition.id),
+                "result": run.output or {},
+            },
+            idempotency_key=f"workflow.completed:{run.id}",
+        )
+        completed += 1
+    return completed
 
 
 async def fetch_subscription_document(
@@ -188,6 +228,8 @@ async def _dispatch_outbox() -> int:
     workflows = SqlAlchemyWorkflowRepository(database.sessions)
     references = SqlAlchemyReferenceRepository(database.sessions)
     agents = AgentRegistry(SqlAlchemyAgentRepository(database.sessions))
+    subscriptions = SqlAlchemySubscriptionRepository(database.sessions)
+    analyses = SqlAlchemyAnalysisRepository(database.sessions)
     webhooks = SqlAlchemyWebhookRepository(database.sessions)
     executor = build_workflow_executor(
         workflow_repository=workflows,
@@ -195,32 +237,27 @@ async def _dispatch_outbox() -> int:
         agent_registry=agents,
         settings=settings,
     )
+    run_service = WorkflowRunService(
+        workflows,
+        executor,
+        projectors={
+            "content_analysis_v1": AnalysisProjector(
+                analyses,
+                references,
+                subscriptions,
+            )
+        },
+    )
 
     def workflow_handler(event_type: str) -> EventHandler:
         async def handle(payload: dict[str, object]) -> None:
-            for definition in await matching_workflows(workflows, event_type):
-                reference_id = str(payload["reference_id"])
-                revision = int(str(payload["revision"]))
-                key = (
-                    f"{event_type}:{reference_id}:{revision}:"
-                    f"{definition.id}:{definition.version}"
-                )
-                run = await executor.execute(
-                    definition.id,
-                    trigger={"event": event_type, **payload},
-                    idempotency_key=key,
-                )
-                await outbox.enqueue(
-                    event_type="workflow.completed",
-                    aggregate_type="workflow_run",
-                    aggregate_id=str(run.id),
-                    payload={
-                        "run_id": str(run.id),
-                        "workflow_id": str(definition.id),
-                        "result": run.output or {},
-                    },
-                    idempotency_key=f"workflow.completed:{run.id}",
-                )
+            await dispatch_workflow_event(
+                workflows,
+                run_service,
+                outbox,
+                event_type=event_type,
+                payload=payload,
+            )
 
         return handle
 

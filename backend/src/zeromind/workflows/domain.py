@@ -66,3 +66,15 @@ class WorkflowRun:
     completed_at: datetime | None
     steps: list[StepRun] = field(default_factory=list)
 
+    def fail_projection(
+        self,
+        message: str,
+        *,
+        now: datetime | None = None,
+    ) -> None:
+        self.status = "failed"
+        self.error = f"analysis_projection_invalid: {message}"
+        self.output = None
+        for step in self.steps:
+            step.output = None
+        self.completed_at = now or datetime.now(UTC)
