@@ -1,5 +1,29 @@
 import type {PropsWithChildren, ReactNode} from "react";
 
+import type {
+  AnalysisDecision,
+  GeneratedAnalysisStatus
+} from "./api/client";
+
+export const analysisStatusLabels = {
+  initial_rejected: "初筛拒绝",
+  fine_rejected: "细筛拒绝",
+  qualified: "通过",
+  rejected: "已拒绝"
+} as const satisfies Record<
+  GeneratedAnalysisStatus | AnalysisDecision,
+  string
+>;
+
+export const dimensionLabels: Record<string, string> = {
+  relevance: "相关性",
+  depth: "深度",
+  novelty: "新颖性",
+  clarity: "清晰度",
+  evidence: "证据质量",
+  actionability: "可操作性"
+};
+
 export function PageHeader({
   eyebrow,
   title,
@@ -43,6 +67,19 @@ export function Status({value}: {value: string}) {
       ? "bad"
       : "neutral";
   return <span className={`status ${tone}`}>{value}</span>;
+}
+
+export function AnalysisStatus({
+  value
+}: {
+  value: GeneratedAnalysisStatus | AnalysisDecision;
+}) {
+  const tone = value === "qualified" ? "good" : "bad";
+  return (
+    <span className={`status ${tone}`}>
+      {analysisStatusLabels[value]}
+    </span>
+  );
 }
 
 export function Empty({children}: PropsWithChildren) {

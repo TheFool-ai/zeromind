@@ -96,6 +96,81 @@ export type Reference = {
   last_seen_at: string;
 };
 
+export type AnalysisDecision = "qualified" | "rejected";
+
+export type GeneratedAnalysisStatus =
+  | "initial_rejected"
+  | "fine_rejected"
+  | "qualified";
+
+export type AnalysisCard = {
+  id: string;
+  reference_id: string;
+  subscription_id: string;
+  source_name: string;
+  source_feed_url: string;
+  title: string;
+  original_url: string | null;
+  author: string | null;
+  published_at: string | null;
+  observed_at: string;
+  generated_status: GeneratedAnalysisStatus;
+  effective_decision: AnalysisDecision;
+  primary_category: string | null;
+  tags: string[];
+  one_sentence_summary: string | null;
+  total_score: number | null;
+  recommendation_level: string | null;
+  recommendation_reason: string | null;
+  overridden: boolean;
+};
+
+export type AnalysisExecution = {
+  agent_id: string;
+  agent_version: number;
+  provider: string;
+  model: string;
+  usage: Record<string, number>;
+};
+
+export type AnalysisDetail = AnalysisCard & {
+  reference_revision: number;
+  workflow_definition_id: string;
+  workflow_definition_version: number;
+  workflow_run_id: string;
+  screening: {
+    score: number;
+    reason: string;
+    summary: string | null;
+  };
+  secondary_categories: string[];
+  summary: string | null;
+  viewpoints: Array<{
+    statement: string;
+    explanation: string;
+  }>;
+  key_quotes: Array<{
+    text: string;
+    context: string | null;
+  }>;
+  dimensions: Array<{
+    name: string;
+    value: number;
+    weight: number;
+    reason: string;
+  }>;
+  provenance: Record<string, AnalysisExecution>;
+  overrides: Array<{
+    id: string;
+    sequence: number;
+    decision: AnalysisDecision;
+    reason: string;
+    actor_subject: string;
+    created_at: string;
+  }>;
+  created_at: string;
+};
+
 export type Provider = {
   id: string;
   name: string;

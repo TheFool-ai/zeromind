@@ -11,6 +11,95 @@ function response(body: unknown, status = 200): Response {
   });
 }
 
+const analysisCard = {
+  id: "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
+  reference_id: "11111111-1111-1111-1111-111111111111",
+  subscription_id: "22222222-2222-2222-2222-222222222222",
+  source_name: "Example Engineering",
+  source_feed_url: "https://example.com/feed",
+  title: "A useful article",
+  original_url: "https://example.com/article",
+  author: "Ada",
+  published_at: "2026-07-30T00:00:00Z",
+  observed_at: "2026-07-31T05:00:00Z",
+  generated_status: "qualified",
+  effective_decision: "qualified",
+  primary_category: "AI",
+  tags: ["agents", "workflows"],
+  one_sentence_summary: "一篇可落地的 Agent 工作流指南。",
+  total_score: 86,
+  recommendation_level: "recommended",
+  recommendation_reason: "信息密度高",
+  overridden: true
+} as const;
+
+const analysisDetail = {
+  ...analysisCard,
+  reference_revision: 3,
+  workflow_definition_id: "33333333-3333-3333-3333-333333333333",
+  workflow_definition_version: 2,
+  workflow_run_id: "44444444-4444-4444-4444-444444444444",
+  screening: {
+    score: 85,
+    reason: "主题相关且包含实质性技术内容。",
+    summary: "元数据初筛通过。"
+  },
+  secondary_categories: ["Engineering"],
+  summary: "文章解释了如何组合 Agent、确定性门禁和结构化输出。",
+  viewpoints: [
+    {
+      statement: "确定性门禁让筛选结果更可解释。",
+      explanation: "阈值可以被观察、复核和测试。"
+    },
+    {
+      statement: "模型判断与业务政策应分离。",
+      explanation: "Agent 负责理解，DSL 负责稳定执行决策。"
+    }
+  ],
+  key_quotes: [
+    {
+      text: "让模型负责判断，让规则负责边界。",
+      context: "作者讨论评分策略时"
+    }
+  ],
+  dimensions: [
+    {name: "relevance", value: 92, weight: 0.2, reason: "高度相关"},
+    {name: "depth", value: 90, weight: 0.2, reason: "论证深入"},
+    {name: "novelty", value: 78, weight: 0.15, reason: "有新视角"},
+    {name: "clarity", value: 88, weight: 0.15, reason: "结构清晰"},
+    {name: "evidence", value: 82, weight: 0.15, reason: "证据充分"},
+    {name: "actionability", value: 84, weight: 0.15, reason: "可直接实践"}
+  ],
+  provenance: {
+    screening: {
+      agent_id: "55555555-5555-5555-5555-555555555555",
+      agent_version: 1,
+      provider: "openai",
+      model: "gpt-5-mini",
+      usage: {}
+    },
+    analysis: {
+      agent_id: "66666666-6666-6666-6666-666666666666",
+      agent_version: 2,
+      provider: "openai",
+      model: "gpt-5",
+      usage: {}
+    }
+  },
+  overrides: [
+    {
+      id: "77777777-7777-7777-7777-777777777777",
+      sequence: 1,
+      decision: "qualified",
+      reason: "人工复核确认内容具有长期参考价值。",
+      actor_subject: "reviewer",
+      created_at: "2026-07-31T06:00:00Z"
+    }
+  ],
+  notes: [],
+  created_at: "2026-07-31T05:00:00Z"
+} as const;
+
 describe("ZeroMind administration", () => {
   beforeEach(() => {
     window.history.replaceState({}, "", "/");
@@ -272,5 +361,92 @@ describe("ZeroMind administration", () => {
 
     expect(await screen.findByRole("button", {name: "登录"})).toBeVisible();
     expect(localStorage.getItem("zeromind_token")).toBeNull();
+  });
+
+  it("renders the structured information flow in Chinese", async () => {
+    localStorage.setItem("zeromind_token", "token");
+    window.history.replaceState({}, "", "/analyses");
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
+      const url = String(input);
+      if (url.includes("/subscriptions")) {
+        return response({items: []});
+      }
+      if (url.includes("/analyses")) {
+        return response({items: [analysisCard], next_cursor: null});
+      }
+      return response({detail: {code: "not_found"}}, 404);
+    });
+
+    render(<App />);
+
+    expect(await screen.findByRole("link", {name: "信息流"})).toBeVisible();
+    expect(
+      await screen.findByRole("link", {name: "A useful article"})
+    ).toBeVisible();
+    expect(screen.getByText("Example Engineering")).toBeVisible();
+    expect(screen.getByText("86")).toBeVisible();
+    expect(screen.getByText("AI")).toBeVisible();
+    expect(
+      screen.getByText("一篇可落地的 Agent 工作流指南。")
+    ).toBeVisible();
+    expect(screen.getByText("人工改判")).toBeVisible();
+    expect(screen.getByRole("button", {name: "已拒绝"})).toBeVisible();
+    expect(screen.getByRole("link", {name: "查看原文"})).toHaveAttribute(
+      "target",
+      "_blank"
+    );
+  });
+
+  it("renders analysis details and submits a manual decision override", async () => {
+    localStorage.setItem("zeromind_token", "token");
+    window.history.replaceState(
+      {},
+      "",
+      `/analyses/${analysisCard.id}`
+    );
+    let overrideRequest: RequestInit | undefined;
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
+      if (init?.method === "POST") {
+        overrideRequest = init;
+        return response({
+          ...analysisDetail,
+          effective_decision: "rejected",
+          overridden: true
+        });
+      }
+      return response(analysisDetail);
+    });
+
+    render(<App />);
+
+    expect(await screen.findByText(analysisDetail.summary)).toBeVisible();
+    expect(screen.getByText("确定性门禁让筛选结果更可解释。")).toBeVisible();
+    expect(screen.getByText("模型判断与业务政策应分离。")).toBeVisible();
+    expect(screen.getByText("相关性")).toBeVisible();
+    expect(screen.getByText("可操作性")).toBeVisible();
+    expect(screen.getAllByText("15%")).toHaveLength(4);
+    expect(screen.getByText("让模型负责判断，让规则负责边界。")).toBeVisible();
+    expect(screen.getByText("主题相关且包含实质性技术内容。")).toBeVisible();
+    expect(screen.getByText(/工作流版本 2/)).toBeVisible();
+    expect(screen.getByText(/gpt-5-mini/)).toBeVisible();
+    expect(screen.getAllByText(/openai/)).toHaveLength(2);
+    expect(
+      screen.getByText("人工复核确认内容具有长期参考价值。")
+    ).toBeVisible();
+
+    await userEvent.selectOptions(
+      screen.getByLabelText("人工决策"),
+      "rejected"
+    );
+    await userEvent.type(
+      screen.getByLabelText("改判理由"),
+      "人工复核发现关键论据缺少来源。"
+    );
+    await userEvent.click(screen.getByRole("button", {name: "提交改判"}));
+
+    expect(JSON.parse(String(overrideRequest?.body))).toEqual({
+      decision: "rejected",
+      reason: "人工复核发现关键论据缺少来源。"
+    });
   });
 });
