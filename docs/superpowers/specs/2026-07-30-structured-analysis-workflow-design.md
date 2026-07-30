@@ -1,185 +1,143 @@
-# Structured Analysis Workflow Design
+# 结构化信息分析工作流设计
 
-## 1. Goal
+## 1. 目标
 
-ZeroMind turns newly discovered RSS references into a queryable information
-flow that helps a reader decide what is worth their time. A safe YAML DSL
-coordinates:
+ZeroMind 要把 RSS 新发现的内容引用转化为可查询的信息流，帮助用户判断哪些内容真正值得投入时间。安全的 YAML DSL 负责依次编排：
 
-1. low-cost metadata screening;
-2. transient original-content resolution;
-3. full-content classification and analysis;
-4. deterministic, explainable scoring;
-5. a second quality gate;
-6. projection into a canonical structured result.
+1. 低成本的元数据初筛；
+2. 临时读取原文；
+3. 基于全文进行分类和深度分析；
+4. 采用确定性算法计算可解释的分数；
+5. 执行第二阶段细筛；
+6. 将结果投影为统一的结构化分析。
 
-The structured result includes categories, tags, summaries, viewpoints,
-dimension scores, a total score, recommendation rationale, and bounded key
-quotes. Users can add their own notes to a reference or analysis.
+结构化结果包含分类、标签、摘要、观点、各维度评分、总分、推荐理由和受限长度的金句。用户可以针对内容引用或分析结果添加自己的笔记。
 
-The first release uses automated Agent screening at both stages. An
-administrator may correct the final decision, but the correction is appended
-as an audited override rather than replacing the Agent result.
+第一版的初筛和细筛都由 Agent 自动完成。管理员可以纠正最终结论，但纠正操作以追加审计记录的方式保存，不覆盖 Agent 的原始结果。
 
-Reading-comparison reports are explicitly outside this scope. The user
-confirmed that "比较阅读" was not a required capability.
+本次范围明确不包含多篇文章的比较阅读报告。用户已经确认“比较阅读”不是所需能力。
 
-## 2. Product principles
+## 2. 产品原则
 
-### 2.1 Less content, with reasons
+### 2.1 信息要少而有价值，并且说明理由
 
-ZeroMind is not trying to maximize the number of items shown. The default
-information flow contains qualified items and explains why each item passed.
-Rejected items remain queryable for auditing and threshold tuning.
+ZeroMind 的目标不是最大化展示数量。默认信息流只展示通过筛选的内容，并说明每条内容为什么值得阅读。被筛掉的内容仍然可以在审计视图中查询，用于校准提示词和筛选阈值。
 
-### 2.2 Separate public quality from personal judgment
+### 2.2 公共质量判断与个人判断分离
 
-The analysis is a reproducible quality assessment of a reference revision.
-A user note is a personal reading asset. Notes never become Agent output, and
-editing a note never changes a quality score.
+结构化分析是针对某一内容引用修订版本、可复现的质量判断。用户笔记属于个人阅读资产。笔记不会成为 Agent 输出的一部分，修改笔记也不会改变内容评分。
 
-### 2.3 Keep judgment explainable
+### 2.3 所有判断尽量可解释
 
-An Agent supplies evidence and a score for each configured dimension. A
-built-in DSL node calculates the weighted total deterministically. Thresholds,
-weights, Agent versions, provider/model identifiers, reasons, and overrides
-remain inspectable.
+Agent 为每个配置的评分维度提供证据、分数和理由。内置 DSL 节点根据权重确定性地计算总分。阈值、权重、Agent 版本、Provider、模型、评分理由和人工改判记录都可以被查看。
 
-### 2.4 Preserve the reference-first content policy
+### 2.4 保持“引用优先”的内容策略
 
-ZeroMind continues to store references rather than article copies. Original
-content is fetched only while a workflow is running and is removed before
-workflow state is persisted. The system may persist at most five short key
-quotes per analysis, each no longer than 300 Unicode characters, plus at most
-200 characters of surrounding context. This bounded derivative output cannot
-be used to reconstruct the article.
+ZeroMind 继续保存内容引用，而不是保存文章副本。原文只在工作流运行期间读取，并在工作流状态持久化前删除。
 
-## 3. Research influence
+每份分析最多保存五条金句，每条不超过 300 个 Unicode 字符，附带的上下文最多 200 个字符。这种受限的派生结果不能用于还原整篇文章。
 
-BestBlogs demonstrates a closely related product pattern:
+## 3. BestBlogs 调研结论
 
-- inexpensive AI screening before deeper processing;
-- full-content structured analysis;
-- quality dimensions, summaries, viewpoints, tags, and key quotes;
-- a quality pool separated from personal reading assets;
-- human correction after automated screening;
-- explicit recommendation reasons.
+BestBlogs 展示了与 ZeroMind 高度相关的产品模式：
 
-ZeroMind adopts those product mechanisms, not BestBlogs source code or
-prompts. Its public repository primarily exposes documentation, Dify
-workflows, OpenAPI material, and a separately licensed CLI. ZeroMind's
-implementation remains native to its Pi Agent Gateway, Python domain model,
-and safe workflow DSL.
+- 在深度处理前进行低成本 AI 初筛；
+- 基于全文生成结构化分析；
+- 输出质量维度、摘要、观点、标签和金句；
+- 将公共质量池与个人阅读资产分离；
+- 在自动筛选后允许人工纠正；
+- 为推荐结果提供明确理由。
 
-## 4. Bounded contexts
+ZeroMind 借鉴的是这些产品机制，不直接复制 BestBlogs 的源码或提示词。BestBlogs 的公共仓库主要开放产品文档、Dify 工作流、OpenAPI 资料和单独声明许可证的 CLI。ZeroMind 将使用现有 Pi Agent Gateway、Python 领域模型和安全工作流 DSL 独立实现。
 
-### 4.1 Ingestion
+## 4. 限界上下文
 
-The existing `ingestion` context remains authoritative for
-`ContentReference` and `ReferenceRevision`. It does not gain analysis fields,
-scores, notes, or article bodies.
+### 4.1 内容摄取 `ingestion`
 
-### 4.2 Workflow
+现有 `ingestion` 上下文继续作为 `ContentReference` 和 `ReferenceRevision` 的唯一事实来源。评分、分析、笔记或文章正文都不会加入引用聚合。
 
-The `workflows` context remains a generic orchestration engine. It gains:
+### 4.2 工作流 `workflows`
 
-- literal values in safe mappings;
-- a `reference` node that reads RSS metadata without fetching the original
-  article;
-- a deterministic `score` node;
-- a terminal `gate` node;
-- a named result projection on a workflow definition;
-- successful early termination when a gate rejects an item.
+`workflows` 上下文继续作为通用编排引擎，并新增：
 
-It does not persist or query information cards directly.
+- 在安全映射中使用字面量的能力；
+- 只读取 RSS 元数据、不访问原文的 `reference` 节点；
+- 确定性计算权重总分的 `score` 节点；
+- 可以正常终止流程的 `gate` 节点；
+- 工作流定义上的具名结果投影；
+- 门禁拒绝时的成功提前终止语义。
 
-### 4.3 Analysis
+工作流上下文本身不负责保存或查询信息卡片。
 
-The new `analysis` context owns the canonical structured assessment of one
-reference revision. `ContentAnalysis` is its aggregate root.
+### 4.3 结构化分析 `analysis`
 
-An `AnalysisProjector` validates a completed workflow result and creates the
-aggregate idempotently. `AnalysisDecisionOverride` records manual corrections
-without modifying the generated assessment.
+新增 `analysis` 上下文，负责维护某个内容引用修订版本的统一结构化评估。`ContentAnalysis` 是该上下文的聚合根。
 
-### 4.4 Notes
+`AnalysisProjector` 负责校验已完成的工作流结果，并以幂等方式创建聚合。`AnalysisDecisionOverride` 负责记录人工改判，同时保留生成时的原始结论。
 
-The new `notes` context owns user-authored Markdown notes. `Note` is its
-aggregate root and references a `ContentReference`; it may also reference a
-specific `ContentAnalysis`.
+### 4.4 用户笔记 `notes`
 
-The initial application has one configured administrator rather than a full
-user aggregate. A note stores the authenticated token subject as
-`owner_subject`. This preserves ownership semantics and allows a later
-multi-user identity implementation without rewriting notes.
+新增 `notes` 上下文，负责维护用户编写的 Markdown 笔记。`Note` 是聚合根，必须关联一个 `ContentReference`，也可以关联某一份具体的 `ContentAnalysis`。
 
-### 4.5 Agents
+当前应用只有一个配置的管理员账号，还没有完整的用户聚合。笔记使用鉴权令牌中的 subject 作为 `owner_subject`。这样既能保证当前的归属语义，也能在以后接入多用户身份系统时避免重写笔记数据。
 
-The existing Agent Gateway remains responsible for Agent lookup, Provider
-selection, Pi execution, JSON Schema validation, usage metadata, and
-timeouts. Screening and deep analysis are ordinary registered Agents with
-different prompts, models, and schemas. No analysis-specific model client is
-introduced.
+### 4.5 Agent 管理 `agents`
 
-## 5. Runtime data flow
+现有 Agent Gateway 继续负责 Agent 查找、Provider 选择、Pi 执行、JSON Schema 校验、用量元数据和超时控制。
+
+初筛 Agent 与深度分析 Agent 是两个普通的已注册 Agent，可以使用不同的提示词、模型和输出 Schema。系统不会引入绕过 Gateway 的分析专用模型客户端。
+
+## 5. 运行时数据流
 
 ```text
 reference.discovered / reference.updated / manual
   |
   v
-reference metadata node
+reference 元数据节点
   |
   v
-screening Agent --------------------+
+初筛 Agent -------------------------+
   |                                 |
   v                                 |
-initial gate -- reject ------------>+--> completed run
+初筛 gate -- 拒绝 ----------------->+--> 工作流正常完成
   |
   v
-transient content resolver
+临时原文解析
   |
   v
-deep-analysis Agent
+深度分析 Agent
   |
   v
-deterministic score node
+确定性 score 节点
   |
   v
-fine gate -- reject ----------------+--> completed run
+细筛 gate -- 拒绝 ----------------->+--> 工作流正常完成
   |
   v
-qualified completed run
+以 qualified 状态正常完成
   |
   v
-canonical AnalysisProjector
+统一 AnalysisProjector
   |
   v
-ContentAnalysis information card
+ContentAnalysis 信息卡片
 ```
 
-Gate rejection is a successful business result, not a workflow failure. A
-provider error, schema mismatch, blocked URL, timeout, invalid mapping, or
-projection validation error remains a workflow failure.
+门禁拒绝属于正常业务结果，不是工作流失败。Provider 错误、Schema 不匹配、URL 被网络策略阻止、超时、无效映射或投影校验失败，仍然属于工作流失败。
 
-A `WorkflowRunService` coordinates execution and projection for both manual
-API runs and worker-triggered runs. This avoids placing analysis persistence
-inside the generic executor and ensures manual and scheduled runs behave
-identically.
+新增 `WorkflowRunService`，统一协调工作流执行和结果投影。手工 API 运行与 Worker 事件触发都必须通过该服务，从而避免把分析持久化逻辑放进通用执行器，并保证两种入口行为一致。
 
-## 6. DSL evolution
+## 6. DSL 演进
 
-### 6.1 Safe mappings and literals
+### 6.1 安全映射和字面量
 
-Existing strings matching the restricted `$.path` grammar continue to resolve
-from the runtime context.
+与受限 `$.path` 语法完全匹配的字符串继续从运行时上下文取值。
 
-Other scalar YAML values become literals. A string beginning with `$` that is
-not a valid restricted path is rejected to catch mapping typos. Dictionaries
-and lists may combine paths and literals recursively. There is still no
-expression evaluation, interpolation, template execution, arbitrary code, or
-dynamic node construction.
+其他 YAML 标量作为字面量处理。以 `$` 开头但不符合合法路径语法的字符串直接被拒绝，避免把路径拼写错误悄悄当成普通文本。字典和列表可以递归混合路径和字面量。
 
-Examples:
+DSL 仍然不支持表达式求值、字符串插值、模板执行、任意代码或动态创建节点。
+
+示例：
 
 ```yaml
 input:
@@ -189,10 +147,9 @@ input:
   maximum_quotes: 5
 ```
 
-### 6.2 `reference` node
+### 6.2 `reference` 节点
 
-The node loads a reference and a selected revision without fetching the
-original URL:
+该节点读取指定引用及其修订版本，但不会访问原文地址：
 
 ```yaml
 - id: metadata
@@ -202,16 +159,27 @@ original URL:
     revision: $.trigger.revision
 ```
 
-Its output contains the reference ID, revision number, subscription ID, URL,
-title, RSS summary, author, publication/update times, and observed time.
+输出字段包括：
 
-If `revision` is absent, it reads the current revision. An event-triggered run
-must provide a revision so replaying an older event remains deterministic.
+- 内容引用 ID；
+- 修订版本号；
+- 订阅源 ID；
+- 原文地址；
+- 标题；
+- RSS 摘要；
+- 作者；
+- 发布时间和更新时间；
+- 系统观察时间。
 
-### 6.3 `score` node
+如果没有传入 `revision`，节点读取当前修订版本。事件触发的运行必须携带修订版本号，使历史事件重放仍然具有确定性。
 
-The score node receives named dimensions. Every dimension contains a
-0-to-100 value, a positive weight, and a non-empty Agent-generated reason.
+### 6.3 `score` 节点
+
+`score` 节点接收一组具名评分维度。每个维度包含：
+
+- 0 到 100 的分值；
+- 大于零的权重；
+- Agent 生成的非空评分理由。
 
 ```yaml
 - id: quality_score
@@ -245,22 +213,17 @@ The score node receives named dimensions. Every dimension contains a
         weight: 0.10
 ```
 
-Weights must sum to `1.0` within a small decimal tolerance. The node calculates
-the total as the weighted mean rounded to the nearest integer. It returns the
-total and normalized dimension objects. It never calls a model.
+所有权重之和必须在很小的小数误差范围内等于 `1.0`。节点按照加权平均值计算总分，并四舍五入为整数。输出包含总分和归一化后的各维度信息。该节点不会调用模型。
 
-The six dimensions above are the default workflow, not hard-coded application
-fields. Another activated workflow may use different dimension names and
-weights. The canonical projection persists the resulting dimension map.
+上面六个维度是默认工作流配置，不是写死的应用字段。其他工作流可以使用不同的维度名称和权重，统一结果投影会保存实际使用的维度映射。
 
-### 6.4 `gate` node
+### 6.4 `gate` 节点
 
-A gate compares a resolved left operand to a literal or resolved right
-operand. Supported operators are:
+`gate` 将解析后的左操作数与字面量或解析后的右操作数进行比较。第一版支持：
 
-- numeric `gt`, `gte`, `lt`, and `lte`;
-- equality `eq` and `ne`;
-- collection membership `in` and `not_in`.
+- 数值比较：`gt`、`gte`、`lt`、`lte`；
+- 相等比较：`eq`、`ne`；
+- 集合成员判断：`in`、`not_in`。
 
 ```yaml
 - id: fine_gate
@@ -280,32 +243,23 @@ operand. Supported operators are:
       score: $.steps.quality_score
 ```
 
-When the predicate is true, execution continues. When false, the workflow
-completes immediately with the resolved `reject.output`. Nodes after the gate
-are not started and therefore do not create misleading failed or skipped
-step records. The gate step records the operands, operator, outcome, and
-terminal status.
+谓词为真时继续执行；谓词为假时，工作流立即使用解析后的 `reject.output` 正常完成。门禁之后的节点不会启动，也不会生成容易误导的失败或跳过步骤记录。
 
-Gate operands must have compatible types. Type mismatch is a workflow error,
-not a rejection.
+门禁步骤会记录操作数、比较符、结果和终止状态。操作数类型不兼容属于工作流错误，不能被当作业务拒绝。
 
-### 6.5 Projection declaration
+### 6.5 结果投影声明
 
-A workflow may declare one canonical projection:
+工作流可以声明一个统一结果投影：
 
 ```yaml
 projection: content_analysis_v1
 ```
 
-When present, every successful terminal output, including gate rejection,
-must validate as `ContentAnalysisDraftV1`. A workflow without a projection
-continues to support arbitrary JSON output.
+声明后，每一种正常终止输出——包括门禁拒绝输出——都必须通过 `ContentAnalysisDraftV1` 校验。没有声明投影的工作流继续支持任意 JSON 输出。
 
-The activation validator checks that the projection name is known. Runtime
-projection validation remains authoritative because output paths and Agent
-values are dynamic.
+激活时的校验器负责检查投影名称是否存在。由于映射路径和 Agent 返回值是动态数据，运行时投影校验仍然是最终判断。
 
-### 6.6 Complete example
+### 6.6 完整示例
 
 ```yaml
 name: valuable-article-analysis
@@ -412,277 +366,240 @@ output:
   score: $.steps.quality_score
 ```
 
-The example Agent IDs are placeholders and cannot be activated until matching
-Agents are registered.
+示例中的 Agent ID 只是文档占位符。注册对应 Agent 之前，这份工作流不能被激活。
 
-## 7. Canonical analysis model
+## 7. 统一分析模型
 
-`ContentAnalysis` contains:
+`ContentAnalysis` 包含：
 
-- `id`;
-- `reference_id` and `reference_revision`;
-- `workflow_definition_id`, `workflow_definition_version`, and
-  `workflow_run_id`;
-- generated `status`: `initial_rejected`, `fine_rejected`, or `qualified`;
-- `screening_score`, `screening_reason`, and optional screening summary;
-- optional primary category, secondary categories, and tags;
-- optional one-sentence summary and full summary;
-- zero to ten viewpoints, each containing a statement and explanation;
-- zero to five key quotes, each containing bounded text and optional context;
-- optional deterministic total score;
-- a map of dimension scores, weights, and reasons;
-- optional recommendation level and recommendation reason;
-- Agent execution provenance copied from workflow steps;
-- `created_at`.
+- `id`；
+- `reference_id` 和 `reference_revision`；
+- `workflow_definition_id`、`workflow_definition_version` 和 `workflow_run_id`；
+- 生成状态：`initial_rejected`、`fine_rejected` 或 `qualified`；
+- 初筛分数、初筛理由和可选的初筛摘要；
+- 可选的主分类、次级分类和标签；
+- 可选的一句话摘要和完整摘要；
+- 0 到 10 个主要观点，每个观点包含陈述和解释；
+- 0 到 5 条金句，每条包含受限长度的原文和可选上下文；
+- 可选的确定性总分；
+- 评分维度映射，每个维度包含分值、权重和理由；
+- 可选的推荐等级和推荐理由；
+- 从工作流步骤复制的 Agent 执行溯源信息；
+- `created_at`。
 
-The aggregate is immutable after creation. New analysis of a changed reference
-or workflow version creates a new aggregate.
+聚合创建后不可修改。内容引用出现新修订版本，或者工作流版本发生变化时，系统创建新的分析聚合。
 
-The unique projection identity is:
+投影的唯一业务标识为：
 
 ```text
 (reference_id, reference_revision,
  workflow_definition_id, workflow_definition_version)
 ```
 
-Replaying the same run therefore returns the existing analysis. A run ID is
-also unique and links directly to its projected result.
+因此，重放同一次业务分析会返回已存在的结果。`workflow_run_id` 同样具有唯一约束，并能从运行记录直接定位投影结果。
 
-### 7.1 Projection validation
+### 7.1 投影校验
 
-`ContentAnalysisDraftV1` enforces:
+`ContentAnalysisDraftV1` 强制保证：
 
-- the reference in the output matches the workflow trigger;
-- the revision exists and belongs to the reference;
-- scores are integers from 0 through 100;
-- dimension weights are positive and total approximately `1.0`;
-- the supplied total matches the deterministic calculation;
-- rejected-at-initial results contain no fabricated full analysis;
-- fine-rejected and qualified results contain classification, summary,
-  viewpoints, dimension score, and recommendation data;
-- collection counts and text lengths are bounded;
-- no transient-document marker or document body exists anywhere in the
-  projected value.
+- 输出中的内容引用与工作流触发参数一致；
+- 修订版本存在，并且属于该内容引用；
+- 所有分数都是 0 到 100 的整数；
+- 维度权重大于零，且总和约等于 `1.0`；
+- 输出总分与确定性算法计算结果一致；
+- 初筛拒绝结果不能包含伪造的全文分析；
+- 细筛拒绝和通过结果必须包含分类、摘要、观点、多维评分和推荐信息；
+- 所有集合数量和文本长度都受到限制；
+- 投影值的任何位置都不能出现临时文档标识或原文正文。
 
-Projection failure fails the run and creates no partial analysis row.
+投影失败会使工作流运行失败，并且不会留下部分分析数据。
 
-### 7.2 Manual decision overrides
+### 7.2 人工决策改判
 
-`AnalysisDecisionOverride` contains:
+`AnalysisDecisionOverride` 包含：
 
-- `id` and `analysis_id`;
-- `decision`: `qualified` or `rejected`;
-- a required reason from 10 to 2,000 characters;
-- `actor_subject`;
-- `created_at`.
+- `id` 和 `analysis_id`；
+- `decision`：`qualified` 或 `rejected`；
+- 10 到 2,000 个字符的必填改判理由；
+- `actor_subject`；
+- `created_at`。
 
-Overrides are append-only. The effective decision is the newest override, or
-the generated status when no override exists. The original score, status,
-Agent output, and earlier overrides remain unchanged.
+改判记录只能追加，不能覆盖。有效结论取最新一条改判记录；没有改判时使用 Agent 生成的状态。原始分数、原始状态、Agent 输出和历史改判记录始终保持不变。
 
-An override changes visibility in the default information flow but does not
-change the numeric score. Threshold tuning therefore remains based on
-unaltered evidence.
+人工改判会改变内容在默认信息流中的可见性，但不会修改数值评分。因此，后续阈值校准仍然可以基于未被篡改的原始证据。
 
-## 8. Notes model
+## 8. 笔记模型
 
-`Note` contains:
+`Note` 包含：
 
-- `id`;
-- `reference_id`;
-- optional `analysis_id`;
-- `owner_subject`;
-- Markdown `body`, from 1 to 64 KiB;
-- `created_at` and `updated_at`.
+- `id`；
+- `reference_id`；
+- 可选的 `analysis_id`；
+- `owner_subject`；
+- 1 到 65,536 个 UTF-8 字节的 Markdown `body`；
+- `created_at` 和 `updated_at`。
 
-A note cannot point to an analysis for a different reference. Owners may
-create multiple notes for one reference. Deletion is a hard delete in the
-initial single-user release; note deletion does not affect references or
-analyses.
+笔记不能关联到其他内容引用的分析。一个用户可以针对同一内容引用创建多条笔记。第一版单用户应用采用硬删除；删除笔记不会影响内容引用或分析结果。
 
-Notes do not store a resolved article body. A user may quote text in their own
-note, but the product does not automatically copy the full article into it.
+笔记不会保存系统解析出的文章正文。用户可以主动在自己的笔记中引用原文，但产品不会自动把整篇文章复制进笔记。
 
-Bookmarks, highlights, folders, collaborative notes, full-text note search,
-and reading history are separate follow-up capabilities.
+收藏、划线、文件夹、协作笔记、笔记全文搜索和阅读历史不在本次范围内。
 
-## 9. API
+## 9. API 设计
 
-### 9.1 Analyses
+### 9.1 结构化分析
 
 - `GET /api/v1/analyses`
-  - filters: effective status, generated status, minimum score, category,
-    tag, subscription, reference, and observed date range;
-  - defaults to effective `qualified`;
-  - sorts by score descending and then publication/observation time
-    descending;
-  - returns cursor-paginated information cards.
+  - 支持按有效状态、生成状态、最低分数、分类、标签、订阅源、内容引用和观察日期范围筛选；
+  - 默认只返回有效状态为 `qualified` 的内容；
+  - 默认先按分数降序，再按发布时间或观察时间降序；
+  - 使用游标分页返回信息卡片。
 - `GET /api/v1/analyses/{analysis_id}`
-  - returns all structured fields, provenance, generated decision, effective
-    decision, overrides, and related notes;
+  - 返回全部结构化字段、溯源信息、生成结论、有效结论、改判历史和关联笔记。
 - `POST /api/v1/analyses/{analysis_id}/overrides`
-  - requires a decision and reason;
-  - records the authenticated administrator subject.
+  - 请求必须包含新结论和改判理由；
+  - 从鉴权上下文记录管理员 subject。
 
-The API never returns a resolved article body. It includes the original URL
-from the reference so the user can open the source.
+API 永远不返回系统解析出的文章正文，只返回引用中的原文地址，供用户跳转阅读。
 
-### 9.2 Notes
+### 9.2 用户笔记
 
-- `GET /api/v1/notes` supports filtering by reference and analysis;
-- `POST /api/v1/notes` creates an owned note;
-- `PUT /api/v1/notes/{note_id}` replaces its body and optional analysis link;
-- `DELETE /api/v1/notes/{note_id}` deletes it.
+- `GET /api/v1/notes`：支持按内容引用和分析结果筛选；
+- `POST /api/v1/notes`：创建当前用户的笔记；
+- `PUT /api/v1/notes/{note_id}`：替换正文和可选的分析关联；
+- `DELETE /api/v1/notes/{note_id}`：删除笔记。
 
-All operations derive `owner_subject` from the authenticated token. A caller
-cannot submit or change it in the request body.
+所有操作都从鉴权令牌获取 `owner_subject`。客户端请求不能提交或修改归属字段。
 
-### 9.3 Workflow validation
+### 9.3 工作流校验
 
-The existing workflow validation response adds:
+现有工作流校验响应增加：
 
-- the projection name;
-- terminal gate IDs;
-- warnings for thresholds outside the usual 0-to-100 score range;
-- the topological order.
+- 投影名称；
+- 所有终止门禁 ID；
+- 阈值超出常用 0 到 100 评分范围时的警告；
+- 拓扑执行顺序。
 
-Unknown projection versions, invalid predicate operators, unsafe mappings,
-invalid score weights, or a gate without a rejection output fail validation.
+以下情况不能通过校验：
 
-## 10. User interface
+- 未知的投影版本；
+- 无效谓词操作符；
+- 不安全映射；
+- 无效评分权重；
+- 缺少拒绝输出的门禁。
 
-The current single application gains an `信息流` entry without reintroducing a
-separate user/admin application split.
+## 10. 用户界面
 
-### 10.1 Information flow
+当前单一应用新增“信息流”入口，不重新拆分管理端和用户端。
 
-Cards display:
+### 10.1 信息流
 
-- title, source, publication time, and original link;
-- category and tags;
-- total score and recommendation level;
-- one-sentence summary;
-- concise pass rationale;
-- whether an administrator overrode the generated decision.
+信息卡片展示：
 
-Controls filter by status, minimum score, category, source, and date. A
-secondary rejected view supports calibration and audit without flooding the
-default feed.
+- 标题、来源、发布时间和原文链接；
+- 分类和标签；
+- 总分和推荐等级；
+- 一句话摘要；
+- 简短的通过理由；
+- 是否存在管理员人工改判。
 
-### 10.2 Analysis detail
+用户可以按状态、最低分、分类、来源和日期筛选。被拒绝的内容放在次级审计视图中，用于校准和检查，不干扰默认信息流。
 
-The detail view shows:
+### 10.2 分析详情
 
-- summary;
-- main viewpoints and explanations;
-- dimension scores with weights and reasons;
-- bounded key quotes;
-- screening and fine-gate decisions;
-- workflow/Agent provenance;
-- override history and an administrator correction form;
-- notes for the reference and a Markdown note editor.
+详情页展示：
 
-The original source opens in a new browser tab. ZeroMind does not render or
-cache the full original article in this release.
+- 摘要；
+- 主要观点及解释；
+- 各评分维度的分值、权重和理由；
+- 受限长度的金句；
+- 初筛和细筛结论；
+- 工作流与 Agent 溯源信息；
+- 改判历史和管理员纠正表单；
+- 当前内容引用的笔记列表与 Markdown 编辑器。
 
-### 10.3 Workflow editor
+原文在新的浏览器标签页中打开。第一版 ZeroMind 不渲染也不缓存完整原文。
 
-The editor example becomes the complete analysis workflow. Validation results
-show terminal gates and the selected projection. Existing workflows remain
-valid and continue to run without projections.
+### 10.3 工作流编辑器
 
-## 11. Failure and recovery behavior
+编辑器中的默认示例改为完整的分析工作流。校验结果展示终止门禁和投影名称。现有工作流保持兼容，不声明投影时继续按照原有方式运行。
 
-- Missing reference or revision: fail with `reference_not_found` or
-  `reference_revision_not_found`.
-- Blocked or invalid original URL: fail the resolve step; do not create an
-  analysis.
-- Agent timeout/provider failure: use the existing bounded retry policy, then
-  fail the run.
-- Agent JSON Schema mismatch: fail the Agent step.
-- Incompatible gate operands: fail the gate rather than treating it as a
-  rejection.
-- Invalid score values or weights: fail the score step.
-- Canonical projection mismatch: fail with
-  `analysis_projection_invalid`; persist no partial result.
-- Duplicate projection: return the existing aggregate.
-- Invalid override: reject without changing effective status.
-- Note ownership mismatch: return not found rather than exposing another
-  owner's note.
+## 11. 失败与恢复行为
 
-Early gate rejection completes normally, projects a rejected analysis, and
-does not invoke later Agents. This is the main cost-control mechanism.
+- 找不到内容引用或修订：分别以 `reference_not_found` 或 `reference_revision_not_found` 失败；
+- 原文 URL 无效或被网络策略阻止：解析步骤失败，不创建分析；
+- Agent 超时或 Provider 失败：按照现有受限重试策略执行，耗尽后运行失败；
+- Agent 输出不符合 JSON Schema：Agent 步骤失败；
+- 门禁操作数类型不兼容：门禁失败，不能当作筛选拒绝；
+- 分数或权重无效：评分步骤失败；
+- 统一投影不符合 Schema：以 `analysis_projection_invalid` 失败，不保存部分结果；
+- 重复投影：返回已有聚合；
+- 无效改判：拒绝请求，不改变有效状态；
+- 笔记归属不匹配：返回未找到，避免泄露其他用户笔记的存在。
 
-## 12. Security and privacy
+门禁提前拒绝会正常完成工作流、投影一份被拒绝的分析，并且不会调用后续 Agent。这是系统控制模型成本的主要机制。
 
-- DSL values remain data; there is no executable expression language.
-- Original bodies continue to be removed from persisted workflow inputs,
-  outputs, step records, logs, and events.
-- Quote and summary bounds prevent an Agent from using the projection as an
-  article-copy channel.
-- Agent output is validated first against its registered JSON Schema and then
-  against the canonical projection schema.
-- Provider credentials stay in environment variables referenced by Provider
-  profiles.
-- Override and note ownership derive from verified authentication, never
-  client-submitted identity fields.
-- API errors and logs include identifiers, not original article text or note
-  bodies.
+## 12. 安全与隐私
 
-## 13. Testing
+- DSL 中的所有值都只是数据，不引入可执行表达式语言；
+- 原文正文继续从持久化的工作流输入、输出、步骤记录、日志和事件中移除；
+- 金句和摘要的数量与长度限制可防止 Agent 把投影结果当成文章复制通道；
+- Agent 输出先通过其注册的 JSON Schema，再通过统一投影 Schema；
+- Provider 凭据继续保存在 Provider Profile 所引用的环境变量中；
+- 改判操作者和笔记归属从已验证的身份上下文获取，不接受客户端传入的身份字段；
+- API 错误和日志只记录标识符，不记录原文正文或用户笔记正文。
 
-### 13.1 DSL and executor
+## 13. 测试策略
 
-- parse literals while preserving restricted path behavior;
-- reject malformed `$` paths and executable-looking mappings;
-- validate `reference`, `score`, and `gate` node contracts;
-- calculate weighted scores deterministically;
-- cover every predicate operator and type mismatch;
-- prove false gates terminate successfully without invoking downstream
-  handlers;
-- preserve idempotent workflow runs;
-- prove transient bodies are absent from persistence on success and failure;
-- prove existing workflow DSL remains backward compatible.
+### 13.1 DSL 与执行器
 
-### 13.2 Analysis domain and persistence
+- 支持字面量，同时保持受限路径的原有行为；
+- 拒绝格式错误的 `$` 路径和疑似可执行映射；
+- 校验 `reference`、`score` 和 `gate` 节点契约；
+- 确定性计算权重总分；
+- 覆盖所有谓词操作符和类型不匹配；
+- 证明门禁为假时工作流正常终止，且不会调用下游处理器；
+- 保持工作流运行幂等；
+- 证明成功和失败时都不会持久化临时原文；
+- 证明现有工作流 DSL 保持向后兼容。
 
-- validate each terminal canonical result shape;
-- reject inconsistent reference/revision or calculated totals;
-- enforce quote, viewpoint, tag, summary, and reason bounds;
-- project the same result idempotently;
-- create distinct results for a new reference or workflow version;
-- append overrides and calculate the effective decision;
-- cover list filters and stable cursor ordering;
-- run repository tests against PostgreSQL-compatible SQLAlchemy models.
+### 13.2 分析领域与持久化
 
-### 13.3 Notes
+- 校验每种终止状态的统一结果结构；
+- 拒绝不一致的内容引用、修订版本或计算总分；
+- 强制执行金句、观点、标签、摘要和理由的数量与长度限制；
+- 对同一结果进行幂等投影；
+- 内容修订或工作流版本变化时创建不同结果；
+- 追加人工改判，并正确计算有效结论；
+- 覆盖列表筛选和稳定的游标排序；
+- 使用兼容 PostgreSQL 的 SQLAlchemy 模型进行仓储测试。
 
-- create, update, list, and delete owned notes;
-- reject empty, oversized, cross-reference, and cross-owner operations;
-- prove note operations do not modify analyses.
+### 13.3 用户笔记
 
-### 13.4 End to end
+- 创建、更新、查询和删除当前用户的笔记；
+- 拒绝空正文、超长正文、跨引用关联和跨用户操作；
+- 证明笔记操作不会修改分析结果。
 
-One fixture flow:
+### 13.4 端到端
 
-1. ingests three reference fixtures;
-2. rejects one at metadata screening;
-3. resolves and fine-rejects one;
-4. resolves and qualifies one;
-5. verifies only two full-content Agent calls occurred;
-6. verifies all three structured results and no article body were persisted;
-7. manually overrides the fine-rejected result;
-8. verifies it enters the default information flow;
-9. creates and edits a note;
-10. verifies API and frontend rendering.
+使用一组固定测试数据完成：
 
-The fixture uses deterministic fake Pi results and a local public-address HTTP
-server. Public RSSHub and model providers are not required for automated
-tests.
+1. 导入三个内容引用；
+2. 在元数据初筛阶段拒绝其中一个；
+3. 解析第二个原文并在细筛阶段拒绝；
+4. 解析第三个原文并通过细筛；
+5. 验证只发生两次全文 Agent 调用；
+6. 验证三份结构化结果均已保存，且数据库中没有文章正文；
+7. 人工把细筛拒绝结果改判为通过；
+8. 验证该内容进入默认信息流；
+9. 创建并修改一条笔记；
+10. 验证 API 和前端渲染。
 
-## 14. Delivery sequence and commit boundaries
+测试使用确定性的 Fake Pi 结果和本地公共地址 HTTP 服务，不依赖公开 RSSHub 或真实模型 Provider。
 
-Implementation is split into reviewable commits:
+## 14. 交付顺序与提交边界
+
+实现会拆成以下可独立评审的提交：
 
 1. `docs: design structured analysis workflows`
 2. `feat: add safe workflow scoring and gates`
@@ -693,41 +610,27 @@ Implementation is split into reviewable commits:
 7. `feat: add structured information flow UI`
 8. `docs: document and verify the analysis workflow`
 
-Each commit includes its related tests. Existing unrelated migration-startup
-changes remain outside these commits.
+每个提交都包含对应测试。现有与本功能无关的迁移启动改动不会混入这些提交。
 
-## 15. Research sources
+## 15. 调研来源
 
-- [BestBlogs repository](https://github.com/ginobefun/BestBlogs) exposes its
-  product documentation, Dify workflow material, OpenAPI, CLI, and Agent
-  skills.
-- [BestBlogs working
-  model](https://www.bestblogs.dev/docs/how-it-works) describes metadata
-  collection, AI screening, structured quality assessment, expert correction,
-  and explainable recommendation.
-- [BestBlogs article filter
-  flow](https://github.com/ginobefun/BestBlogs/blob/main/flows/Dify/ArticleFIlterFlow.md)
-  documents its inexpensive first-stage result and threshold.
-- [BestBlogs article analysis
-  flow](https://github.com/ginobefun/BestBlogs/blob/main/flows/Dify/ArticleAnalysisFlow.md)
-  documents full-content analysis, classification, scoring, reflection, and
-  structured output.
-- [BestBlogs Capture
-  API](https://github.com/ginobefun/BestBlogs/blob/main/openapi/05-capture.md)
-  separates personal bookmarks and notes from generated content analysis.
+- [BestBlogs 官方仓库](https://github.com/ginobefun/BestBlogs)：公开产品文档、Dify 工作流资料、OpenAPI、CLI 和 Agent Skills。
+- [BestBlogs 工作原理](https://www.bestblogs.dev/docs/how-it-works)：介绍内容聚合、AI 初筛、结构化质量判断、专家纠正和可解释推荐。
+- [BestBlogs 文章初评流程](https://github.com/ginobefun/BestBlogs/blob/main/flows/Dify/ArticleFIlterFlow.md)：介绍第一阶段的低成本输出及放行阈值。
+- [BestBlogs 文章分析流程](https://github.com/ginobefun/BestBlogs/blob/main/flows/Dify/ArticleAnalysisFlow.md)：介绍全文分析、分类、评分、反思和结构化输出。
+- [BestBlogs Capture API](https://github.com/ginobefun/BestBlogs/blob/main/openapi/05-capture.md)：将个人收藏和笔记与系统生成的内容分析分离。
 
-## 16. Deferred work
+## 16. 延后能力
 
-- reading-comparison reports;
-- full multi-user registration and authorization;
-- personalized ranking learned from behavior;
-- bookmarks, highlights, folders, and reading history;
-- human review queues beyond direct administrator overrides;
-- prompt calibration from override history;
-- long-document map/reduce nodes;
-- translation and cross-language result variants;
-- semantic search or embeddings;
-- duplicate-story clustering and topic synthesis.
+- 多篇文章的比较阅读报告；
+- 完整的多用户注册与授权；
+- 根据用户行为学习的个性化排序；
+- 收藏、划线、文件夹和阅读历史；
+- 独立人工审核队列；
+- 根据人工改判历史自动校准提示词；
+- 长文 Map/Reduce 节点；
+- 翻译和跨语言结果；
+- 语义搜索或向量嵌入；
+- 同一新闻的跨来源去重聚类与主题综合。
 
-These can build on the canonical analysis and note identities without changing
-the first release's reference-first storage policy.
+这些能力以后可以建立在统一的内容分析与笔记标识之上，不需要改变第一版“引用优先”的存储策略。
