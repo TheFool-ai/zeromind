@@ -9,6 +9,9 @@ from zeromind.analysis.domain import ContentAnalysis
 from zeromind.analysis.repository import AnalysisQuery
 from zeromind.analysis.service import AnalysisService, decode_cursor
 from zeromind.identity.context import request_identity
+from zeromind.identity.tokens import AdminIdentity
+from zeromind.notes.domain import Note
+from zeromind.notes.service import NoteService
 
 GeneratedStatus = Literal["initial_rejected", "fine_rejected", "qualified"]
 Decision = Literal["qualified", "rejected"]
@@ -92,6 +95,28 @@ class OverrideResponse(BaseModel):
     created_at: datetime
 
 
+class RelatedNoteResponse(BaseModel):
+    id: UUID
+    reference_id: UUID
+    analysis_id: UUID | None
+    owner_subject: str
+    body: str
+    created_at: datetime
+    updated_at: datetime
+
+    @classmethod
+    def from_domain(cls, note: Note) -> "RelatedNoteResponse":
+        return cls(
+            id=note.id,
+            reference_id=note.reference_id,
+            analysis_id=note.analysis_id,
+            owner_subject=note.owner_subject,
+            body=note.body,
+            created_at=note.created_at,
+            updated_at=note.updated_at,
+        )
+
+
 class AnalysisDetailResponse(AnalysisCardResponse):
     reference_revision: int
     workflow_definition_id: UUID
@@ -105,10 +130,16 @@ class AnalysisDetailResponse(AnalysisCardResponse):
     dimensions: list[ScoreDimensionResponse]
     provenance: dict[str, object]
     overrides: list[OverrideResponse]
+    notes: list[RelatedNoteResponse]
     created_at: datetime
 
     @classmethod
-    def from_domain(cls, analysis: ContentAnalysis) -> "AnalysisDetailResponse":
+    def from_domain(
+        cls,
+        analysis: ContentAnalysis,
+        *,
+        notes: tuple[Note, ...] = (),
+    ) -> "AnalysisDetailResponse":
         card = AnalysisCardResponse.from_domain(analysis)
         return cls(
             **card.model_dump(),
@@ -155,6 +186,7 @@ class AnalysisDetailResponse(AnalysisCardResponse):
                 )
                 for item in analysis.overrides
             ],
+            notes=[RelatedNoteResponse.from_domain(note) for note in notes],
             created_at=analysis.created_at,
         )
 
@@ -171,7 +203,10 @@ class CreateOverrideRequest(BaseModel):
     reason: str = Field(min_length=10, max_length=2000)
 
 
-def create_analysis_router(service: AnalysisService) -> APIRouter:
+def create_analysis_router(
+    service: AnalysisService,
+    note_service: NoteService | None = None,
+) -> APIRouter:
     router = APIRouter(prefix="/api/v1/analyses", tags=["analyses"])
 
     @router.get("", response_model=AnalysisListResponse)
@@ -221,7 +256,10 @@ def create_analysis_router(service: AnalysisService) -> APIRouter:
         )
 
     @router.get("/{analysis_id}", response_model=AnalysisDetailResponse)
-    async def get_analysis(analysis_id: UUID) -> AnalysisDetailResponse:
+    async def get_analysis(
+        analysis_id: UUID,
+        request: Request,
+    ) -> AnalysisDetailResponse:
         try:
             analysis = await service.get(analysis_id)
         except KeyError as error:
@@ -229,7 +267,14 @@ def create_analysis_router(service: AnalysisService) -> APIRouter:
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail={"code": "analysis_not_found"},
             ) from error
-        return AnalysisDetailResponse.from_domain(analysis)
+        notes: tuple[Note, ...] = ()
+        identity = getattr(request.state, "identity", None)
+        if note_service is not None and isinstance(identity, AdminIdentity):
+            notes = await note_service.list_owned(
+                identity.username,
+                reference_id=analysis.reference_id,
+            )
+        return AnalysisDetailResponse.from_domain(analysis, notes=notes)
 
     @router.post(
         "/{analysis_id}/overrides",
@@ -258,6 +303,14 @@ def create_analysis_router(service: AnalysisService) -> APIRouter:
                 status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
                 detail={"code": "invalid_override", "message": str(error)},
             ) from error
-        return AnalysisDetailResponse.from_domain(analysis)
+        notes = (
+            await note_service.list_owned(
+                identity.username,
+                reference_id=analysis.reference_id,
+            )
+            if note_service is not None
+            else ()
+        )
+        return AnalysisDetailResponse.from_domain(analysis, notes=notes)
 
     return router

@@ -36,6 +36,13 @@ from zeromind.ingestion.repository import (
     ReferenceRepository,
     SqlAlchemyReferenceRepository,
 )
+from zeromind.notes.api import create_note_router
+from zeromind.notes.repository import (
+    InMemoryNoteRepository,
+    NoteRepository,
+    SqlAlchemyNoteRepository,
+)
+from zeromind.notes.service import NoteService
 from zeromind.rsshub.api import create_rsshub_router
 from zeromind.rsshub.credentials import CredentialCipher
 from zeromind.rsshub.repository import (
@@ -86,6 +93,7 @@ def create_app(
     agent_registry: AgentRegistry | None = None,
     workflow_repository: WorkflowRepository | None = None,
     analysis_repository: AnalysisRepository | None = None,
+    note_repository: NoteRepository | None = None,
     workflow_run_service: WorkflowRunService | None = None,
     token_service: TokenService | None = None,
     webhook_repository: WebhookRepository | None = None,
@@ -187,6 +195,17 @@ def create_app(
             if resolved_database is not None
             else InMemoryAnalysisRepository()
         )
+    if note_repository is None:
+        note_repository = (
+            SqlAlchemyNoteRepository(resolved_database.sessions)
+            if resolved_database is not None
+            else InMemoryNoteRepository()
+        )
+    note_service = NoteService(
+        note_repository,
+        reference_repository,
+        analysis_repository,
+    )
     if workflow_run_service is None:
         workflow_executor = build_workflow_executor(
             workflow_repository=workflow_repository,
@@ -213,7 +232,13 @@ def create_app(
             agent_registry,
         )
     )
-    app.include_router(create_analysis_router(AnalysisService(analysis_repository)))
+    app.include_router(
+        create_analysis_router(
+            AnalysisService(analysis_repository),
+            note_service,
+        )
+    )
+    app.include_router(create_note_router(note_service))
     app.include_router(create_identity_router(resolved_token_service))
     if webhook_repository is None:
         webhook_repository = (
