@@ -133,6 +133,16 @@ export type AnalysisExecution = {
   usage: Record<string, number>;
 };
 
+export type Note = {
+  id: string;
+  reference_id: string;
+  analysis_id: string | null;
+  owner_subject: string;
+  body: string;
+  created_at: string;
+  updated_at: string;
+};
+
 export type AnalysisDetail = AnalysisCard & {
   reference_revision: number;
   workflow_definition_id: string;
@@ -168,6 +178,7 @@ export type AnalysisDetail = AnalysisCard & {
     actor_subject: string;
     created_at: string;
   }>;
+  notes: Note[];
   created_at: string;
 };
 

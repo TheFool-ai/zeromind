@@ -6,7 +6,8 @@ import {
   api,
   type AnalysisDecision,
   type AnalysisDetail,
-  type AnalysisExecution
+  type AnalysisExecution,
+  type Note
 } from "../api/client";
 import {
   AnalysisStatus,
@@ -33,6 +34,213 @@ function Provenance({
         Agent {execution.agent_id} · 版本 {execution.agent_version}
       </code>
     </article>
+  );
+}
+
+function NotesPanel({
+  referenceId,
+  analysisId
+}: {
+  referenceId: string;
+  analysisId: string;
+}) {
+  const queryClient = useQueryClient();
+  const queryKey = ["notes", {referenceId}] as const;
+  const [body, setBody] = useState("");
+  const [editing, setEditing] = useState<Note | null>(null);
+  const [linkedToAnalysis, setLinkedToAnalysis] = useState(true);
+  const notes = useQuery({
+    queryKey,
+    queryFn: () =>
+      api<{items: Note[]}>(
+        `/notes?${new URLSearchParams({reference_id: referenceId})}`
+      ),
+    retry: false
+  });
+  const refresh = () =>
+    queryClient.invalidateQueries({queryKey});
+  const createNote = useMutation({
+    mutationFn: (noteBody: string) =>
+      api<Note>("/notes", {
+        method: "POST",
+        body: JSON.stringify({
+          reference_id: referenceId,
+          analysis_id: analysisId,
+          body: noteBody
+        })
+      }),
+    onSuccess: () => {
+      setBody("");
+      void refresh();
+    }
+  });
+  const updateNote = useMutation({
+    mutationFn: ({
+      noteId,
+      noteBody,
+      noteAnalysisId
+    }: {
+      noteId: string;
+      noteBody: string;
+      noteAnalysisId: string | null;
+    }) =>
+      api<Note>(`/notes/${noteId}`, {
+        method: "PUT",
+        body: JSON.stringify({
+          analysis_id: noteAnalysisId,
+          body: noteBody
+        })
+      }),
+    onSuccess: () => {
+      setEditing(null);
+      setBody("");
+      setLinkedToAnalysis(true);
+      void refresh();
+    }
+  });
+  const deleteNote = useMutation({
+    mutationFn: (noteId: string) =>
+      api<Record<string, never>>(`/notes/${noteId}`, {method: "DELETE"}),
+    onSuccess: (_, noteId) => {
+      if (editing?.id === noteId) {
+        setEditing(null);
+        setBody("");
+      }
+      void refresh();
+    }
+  });
+  const items = notes.data?.items ?? [];
+  const byteCount = new Blob([body]).size;
+  const pending =
+    createNote.isPending || updateNote.isPending || deleteNote.isPending;
+  const mutationError =
+    createNote.error ?? updateNote.error ?? deleteNote.error;
+
+  function submitNote(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const normalized = body.trim();
+    if (!normalized || byteCount > 65_536) return;
+    if (editing) {
+      updateNote.mutate({
+        noteId: editing.id,
+        noteBody: normalized,
+        noteAnalysisId: linkedToAnalysis ? analysisId : null
+      });
+      return;
+    }
+    createNote.mutate(normalized);
+  }
+
+  function beginEditing(note: Note) {
+    setEditing(note);
+    setBody(note.body);
+    setLinkedToAnalysis(note.analysis_id !== null);
+  }
+
+  function cancelEditing() {
+    setEditing(null);
+    setBody("");
+    setLinkedToAnalysis(true);
+  }
+
+  return (
+    <section
+      className="detail-section notes-panel"
+      aria-label="阅读笔记"
+    >
+      <p className="section-kicker">READING NOTES</p>
+      <h2>阅读笔记</h2>
+      <form className="note-editor" onSubmit={submitNote}>
+        <label>
+          笔记正文
+          <textarea
+            value={body}
+            onChange={(event) => setBody(event.target.value)}
+            placeholder="记录你的判断、联想或可复用的方法…"
+          />
+        </label>
+        <div className="note-editor-meta">
+          <small>
+            约 {byteCount.toLocaleString("zh-CN")} / 65,536 UTF-8 字节
+          </small>
+          {editing ? (
+            <label className="check-label">
+              <input
+                type="checkbox"
+                checked={linkedToAnalysis}
+                onChange={(event) =>
+                  setLinkedToAnalysis(event.target.checked)
+                }
+              />
+              关联当前分析
+            </label>
+          ) : null}
+        </div>
+        <div className="button-row">
+          {editing ? (
+            <button
+              type="button"
+              className="secondary"
+              onClick={cancelEditing}
+            >
+              取消编辑
+            </button>
+          ) : null}
+          <button
+            type="submit"
+            disabled={!body.trim() || byteCount > 65_536 || pending}
+          >
+            {editing ? "保存修改" : "保存笔记"}
+          </button>
+        </div>
+      </form>
+      {byteCount > 65_536 ? (
+        <div role="alert" className="notice error">
+          笔记正文不能超过 65,536 个 UTF-8 字节。
+        </div>
+      ) : null}
+      {notes.error ? <ErrorNotice error={notes.error} /> : null}
+      {mutationError ? <ErrorNotice error={mutationError} /> : null}
+      {notes.isLoading ? (
+        <p className="muted">正在加载笔记…</p>
+      ) : null}
+      {!notes.isLoading && !notes.error && items.length === 0 ? (
+        <p className="notes-empty">还没有笔记</p>
+      ) : null}
+      {items.length ? (
+        <div className="notes-list">
+          {items.map((note) => (
+            <article className="note-card" key={note.id}>
+              <p>{note.body}</p>
+              <footer>
+                <time>{formatTime(note.created_at)}</time>
+                <span>
+                  {note.analysis_id ? "关联当前分析" : "仅关联原文"}
+                </span>
+                <div>
+                  <button
+                    type="button"
+                    className="secondary tiny"
+                    onClick={() => beginEditing(note)}
+                  >
+                    编辑笔记
+                  </button>
+                  <button
+                    type="button"
+                    className="secondary tiny danger-button"
+                    aria-label={`删除笔记 ${formatTime(note.created_at)}`}
+                    disabled={deleteNote.isPending}
+                    onClick={() => deleteNote.mutate(note.id)}
+                  >
+                    删除
+                  </button>
+                </div>
+              </footer>
+            </article>
+          ))}
+        </div>
+      ) : null}
+    </section>
   );
 }
 
@@ -193,6 +401,11 @@ export function AnalysisDetailPage() {
               </p>
             ) : null}
           </section>
+
+          <NotesPanel
+            referenceId={item.reference_id}
+            analysisId={item.id}
+          />
         </main>
 
         <aside className="analysis-inspection">

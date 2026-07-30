@@ -1,4 +1,4 @@
-import { render, screen, within } from "@testing-library/react";
+import {render, screen, waitFor, within} from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -448,5 +448,115 @@ describe("ZeroMind administration", () => {
       decision: "rejected",
       reason: "人工复核发现关键论据缺少来源。"
     });
+  });
+
+  it("creates, edits, and deletes a reading note from analysis details", async () => {
+    localStorage.setItem("zeromind_token", "token");
+    window.history.replaceState(
+      {},
+      "",
+      `/analyses/${analysisCard.id}`
+    );
+    let notes: Array<Record<string, unknown>> = [];
+    let notePayload: Record<string, unknown> | undefined;
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
+      const url = String(input);
+      if (url.includes("/notes")) {
+        if (init?.method === "POST") {
+          notePayload = JSON.parse(String(init.body)) as Record<
+            string,
+            unknown
+          >;
+          const created = {
+            id: "88888888-8888-8888-8888-888888888888",
+            ...notePayload,
+            owner_subject: "admin",
+            created_at: "2026-07-31T08:00:00Z",
+            updated_at: "2026-07-31T08:00:00Z"
+          };
+          notes = [created];
+          return response(created, 201);
+        }
+        if (init?.method === "PUT") {
+          const payload = JSON.parse(String(init.body)) as Record<
+            string,
+            unknown
+          >;
+          notes = notes.map((note) => ({
+            ...note,
+            ...payload,
+            updated_at: "2026-07-31T08:30:00Z"
+          }));
+          return response(notes[0]);
+        }
+        if (init?.method === "DELETE") {
+          notes = [];
+          return new Response(null, {status: 204});
+        }
+        return response({items: notes});
+      }
+      return response(analysisDetail);
+    });
+
+    render(<App />);
+
+    expect(await screen.findByText("还没有笔记")).toBeVisible();
+    await userEvent.type(
+      screen.getByLabelText("笔记正文"),
+      "这条评分规则可以用于项目评审。"
+    );
+    await userEvent.click(screen.getByRole("button", {name: "保存笔记"}));
+
+    expect(
+      await screen.findByText("这条评分规则可以用于项目评审。")
+    ).toBeVisible();
+    expect(notePayload).toEqual({
+      reference_id: "11111111-1111-1111-1111-111111111111",
+      analysis_id: "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
+      body: "这条评分规则可以用于项目评审。"
+    });
+
+    await userEvent.click(screen.getByRole("button", {name: "编辑笔记"}));
+    const editor = screen.getByLabelText("笔记正文");
+    await userEvent.clear(editor);
+    await userEvent.type(editor, "更新后的项目评审规则。");
+    await userEvent.click(screen.getByRole("button", {name: "保存修改"}));
+
+    expect(await screen.findByText("更新后的项目评审规则。")).toBeVisible();
+    await userEvent.click(
+      screen.getByRole("button", {name: /删除笔记/})
+    );
+    await waitFor(() => {
+      expect(
+        screen.queryByText("更新后的项目评审规则。")
+      ).not.toBeInTheDocument();
+    });
+    expect(screen.getByText("还没有笔记")).toBeVisible();
+  });
+
+  it("keeps analysis content visible when reading notes fail to load", async () => {
+    localStorage.setItem("zeromind_token", "token");
+    window.history.replaceState(
+      {},
+      "",
+      `/analyses/${analysisCard.id}`
+    );
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
+      if (String(input).includes("/notes")) {
+        return response(
+          {detail: {code: "notes_unavailable", message: "笔记服务不可用"}},
+          503
+        );
+      }
+      return response(analysisDetail);
+    });
+
+    render(<App />);
+
+    expect(await screen.findByText(analysisDetail.summary)).toBeVisible();
+    const notesPanel = await screen.findByRole("region", {name: "阅读笔记"});
+    expect(within(notesPanel).getByRole("alert")).toHaveTextContent(
+      "笔记服务不可用"
+    );
   });
 });

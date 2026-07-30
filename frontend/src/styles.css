@@ -405,6 +405,53 @@ pre { background: var(--ink); color: #e9e7df; padding: 1rem; font-size: .7rem; o
 .override-history li > div { display: flex; justify-content: space-between; align-items: center; }
 .override-history p { margin: .6rem 0; font-size: .75rem; line-height: 1.55; }
 .override-history time, .override-history small { color: var(--muted); font-size: .62rem; }
+.notes-panel { display: grid; gap: 1rem; }
+.notes-panel > h2 { margin-bottom: 0; }
+.note-editor {
+  display: grid;
+  gap: .75rem;
+  padding: 1rem;
+  border: 1px solid var(--line);
+  background: #f0eee7;
+}
+.note-editor textarea { min-height: 130px; resize: vertical; line-height: 1.6; }
+.note-editor-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: .75rem;
+}
+.note-editor-meta .check-label { color: var(--ink); }
+.notes-empty {
+  margin: 0;
+  padding: 2rem;
+  border: 1px dashed var(--line);
+  color: var(--muted);
+  text-align: center;
+  font-size: .82rem;
+}
+.notes-list { display: grid; gap: .75rem; }
+.note-card { padding: 1rem; border: 1px solid var(--line); background: white; }
+.note-card > p {
+  margin: 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  line-height: 1.7;
+}
+.note-card footer {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: .6rem 1rem;
+  padding-top: .8rem;
+  margin-top: .8rem;
+  border-top: 1px solid var(--line);
+  color: var(--muted);
+  font-size: .65rem;
+}
+.note-card footer > div { display: flex; gap: .45rem; margin-left: auto; }
+.danger-button { color: #9d3023 !important; border-color: #d6aaa4 !important; }
+.danger-button:hover { color: white !important; background: #9d3023 !important; }
 .detail-error { display: grid; gap: 1rem; }
 
 .login { min-height: 100vh; display: grid; grid-template-columns: minmax(340px, 560px) 1fr; background: var(--paper); }
@@ -446,4 +493,6 @@ pre { background: var(--ink); color: #e9e7df; padding: 1rem; font-size: .7rem; o
   .analysis-grid { grid-template-columns: 1fr; }
   .analysis-card { min-height: 0; }
   .detail-byline a { width: 100%; margin-left: 0; }
+  .note-editor-meta { align-items: flex-start; flex-direction: column; }
+  .note-card footer > div { width: 100%; margin-left: 0; }
 }
