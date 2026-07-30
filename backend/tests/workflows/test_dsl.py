@@ -69,6 +69,123 @@ async def test_valid_workflow_parses_and_resolves_registered_agent() -> None:
     assert spec.topological_order() == ("resolve", "summarize")
 
 
+def test_workflow_accepts_literals_and_analysis_projection() -> None:
+    spec = parse_workflow_yaml(
+        """
+name: screened
+trigger: {events: [manual]}
+projection: content_analysis_v1
+nodes:
+  - id: score
+    type: score
+    input:
+      dimensions:
+        value:
+          value: 80
+          weight: 1.0
+          reason: useful
+  - id: gate
+    type: gate
+    depends_on: [score]
+    predicate:
+      left: $.steps.score.total
+      operator: gte
+      right: 70
+    reject:
+      output: {schema_version: 1, status: fine_rejected}
+output: {schema_version: 1, status: qualified}
+"""
+    )
+
+    assert spec.projection == "content_analysis_v1"
+    assert spec.nodes[0].input["dimensions"] == {
+        "value": {"value": 80, "weight": 1.0, "reason": "useful"}
+    }
+
+
+def test_workflow_accepts_safe_text_literals() -> None:
+    spec = parse_workflow_yaml(
+        """
+name: literals
+trigger: {events: [manual]}
+nodes:
+  - id: node
+    type: parallel
+    input:
+      audience: software-builders
+      instruction: Return JSON only.
+output: {status: complete}
+"""
+    )
+
+    assert spec.nodes[0].input == {
+        "audience": "software-builders",
+        "instruction": "Return JSON only.",
+    }
+
+
+def test_workflow_rejects_unknown_projection() -> None:
+    with pytest.raises(WorkflowValidationError, match="projection"):
+        parse_workflow_yaml(
+            """
+name: unknown-projection
+trigger: {events: [manual]}
+projection: arbitrary_json
+nodes: [{id: node, type: parallel}]
+"""
+        )
+
+
+@pytest.mark.parametrize(
+    "node",
+    [
+        "{id: gate, type: gate, predicate: {left: 1, operator: eq, right: 1}}",
+        "{id: gate, type: gate, reject: {output: {status: rejected}}}",
+    ],
+)
+def test_gate_requires_predicate_and_reject_output(node: str) -> None:
+    with pytest.raises(WorkflowValidationError, match="gate"):
+        parse_workflow_yaml(
+            f"""
+name: incomplete-gate
+trigger: {{events: [manual]}}
+nodes: [{node}]
+"""
+        )
+
+
+def test_non_gate_rejects_predicate_configuration() -> None:
+    with pytest.raises(WorkflowValidationError, match="only valid for gate"):
+        parse_workflow_yaml(
+            """
+name: misplaced-predicate
+trigger: {events: [manual]}
+nodes:
+  - id: node
+    type: parallel
+    predicate: {left: 1, operator: eq, right: 1}
+"""
+        )
+
+
+def test_gate_must_be_the_only_node_in_its_topological_layer() -> None:
+    with pytest.raises(WorkflowValidationError, match="topological layer"):
+        parse_workflow_yaml(
+            """
+name: parallel-gate
+trigger: {events: [manual]}
+nodes:
+  - {id: prepare, type: parallel}
+  - id: gate
+    type: gate
+    depends_on: [prepare]
+    predicate: {left: 1, operator: eq, right: 1}
+    reject: {output: {status: rejected}}
+  - {id: bypass, type: parallel, depends_on: [prepare]}
+"""
+        )
+
+
 def test_workflow_rejects_cycles() -> None:
     cyclic = """
 name: cyclic
@@ -87,6 +204,8 @@ output: {}
     "mapping",
     [
         "${__import__('os').system('whoami')}",
+        "$(whoami)",
+        "`whoami`",
         "$.steps[item]",
         "lambda x: x",
     ],
@@ -119,4 +238,3 @@ output: {}
 
     with pytest.raises(WorkflowValidationError, match="max_attempts"):
         parse_workflow_yaml(source)
-

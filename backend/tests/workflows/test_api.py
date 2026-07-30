@@ -86,3 +86,30 @@ nodes:
     assert response.status_code == 422
     assert response.json()["detail"]["code"] == "invalid_workflow"
 
+
+def test_validation_reports_projection_terminal_gates_and_threshold_warnings() -> None:
+    response = make_client().post(
+        "/api/v1/workflows/validate",
+        json={
+            "source": """
+name: analyzed
+trigger: {events: [manual]}
+projection: content_analysis_v1
+nodes:
+  - {id: prepare, type: parallel}
+  - id: quality_gate
+    type: gate
+    depends_on: [prepare]
+    predicate: {left: $.steps.prepare.score, operator: gte, right: 101}
+    reject: {output: {schema_version: 1, status: fine_rejected}}
+output: {schema_version: 1, status: qualified}
+"""
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.json()["projection"] == "content_analysis_v1"
+    assert response.json()["terminal_gates"] == ["quality_gate"]
+    assert len(response.json()["warnings"]) == 1
+    assert "quality_gate" in response.json()["warnings"][0]
+    assert "101" in response.json()["warnings"][0]

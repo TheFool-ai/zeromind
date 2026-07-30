@@ -35,6 +35,12 @@ class ReferenceRepository(Protocol):
         reference_id: uuid.UUID,
     ) -> ReferenceRevision: ...
 
+    async def get_revision(
+        self,
+        reference_id: uuid.UUID,
+        number: int,
+    ) -> ReferenceRevision: ...
+
     async def get_reference(
         self,
         reference_id: uuid.UUID,
@@ -88,6 +94,16 @@ class InMemoryReferenceRepository:
     async def get_current_revision(self, reference_id: uuid.UUID) -> ReferenceRevision:
         revisions = self._revisions[reference_id]
         return max(revisions, key=lambda item: item.number)
+
+    async def get_revision(
+        self,
+        reference_id: uuid.UUID,
+        number: int,
+    ) -> ReferenceRevision:
+        for revision in self._revisions[reference_id]:
+            if revision.number == number:
+                return revision
+        raise KeyError((reference_id, number))
 
     async def get_reference(
         self,
@@ -261,6 +277,22 @@ class SqlAlchemyReferenceRepository:
             )
             if model is None:
                 raise KeyError(reference_id)
+            return _revision_to_domain(model)
+
+    async def get_revision(
+        self,
+        reference_id: uuid.UUID,
+        number: int,
+    ) -> ReferenceRevision:
+        async with self._sessions() as session:
+            model = await session.scalar(
+                select(ReferenceRevisionModel).where(
+                    ReferenceRevisionModel.reference_id == reference_id,
+                    ReferenceRevisionModel.number == number,
+                )
+            )
+            if model is None:
+                raise KeyError((reference_id, number))
             return _revision_to_domain(model)
 
     async def get_reference(

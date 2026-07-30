@@ -1,13 +1,21 @@
 import asyncio
 import uuid
 from collections.abc import Awaitable, Callable
+from dataclasses import dataclass
 from datetime import UTC, datetime
 
 from zeromind.workflows.domain import StepRun, WorkflowRun
-from zeromind.workflows.dsl import NodeSpec
+from zeromind.workflows.dsl import PATH, NodeSpec
+from zeromind.workflows.primitives import evaluate_predicate
 from zeromind.workflows.repository import WorkflowRepository
 
 NodeHandler = Callable[[dict[str, object]], Awaitable[dict[str, object]]]
+
+
+@dataclass(frozen=True, slots=True)
+class TerminalNodeResult:
+    step_output: dict[str, object]
+    workflow_output: dict[str, object]
 
 
 def resolve_path(path: str, context: dict[str, object]) -> object:
@@ -21,7 +29,7 @@ def resolve_path(path: str, context: dict[str, object]) -> object:
 
 def resolve_mapping(value: object, context: dict[str, object]) -> object:
     if isinstance(value, str):
-        return resolve_path(value, context)
+        return resolve_path(value, context) if PATH.fullmatch(value) else value
     if isinstance(value, dict):
         return {
             str(key): resolve_mapping(item, context)
@@ -100,7 +108,19 @@ class WorkflowExecutor:
                         for node_id in layer
                     )
                 )
-                outputs.update(dict(zip(layer, results, strict=True)))
+                for node_id, result in zip(layer, results, strict=True):
+                    if isinstance(result, TerminalNodeResult):
+                        persisted_output = persistent_view(result.workflow_output)
+                        if not isinstance(persisted_output, dict):
+                            raise ValueError(
+                                "gate reject output must resolve to an object"
+                            )
+                        run.output = persisted_output
+                        run.status = "completed"
+                        run.completed_at = datetime.now(UTC)
+                        await self._repository.save_run(run)
+                        return run
+                    outputs[node_id] = result
             context: dict[str, object] = {"trigger": trigger, "steps": outputs}
             resolved_output = resolve_mapping(definition.spec.output, context)
             if not isinstance(resolved_output, dict):
@@ -125,10 +145,7 @@ class WorkflowExecutor:
         run: WorkflowRun,
         node: NodeSpec,
         context: dict[str, object],
-    ) -> dict[str, object]:
-        handler = self._handlers.get(node.type)
-        if handler is None:
-            raise ValueError(f"no handler registered for node type {node.type}")
+    ) -> dict[str, object] | TerminalNodeResult:
         resolved = resolve_mapping(node.input, context)
         if not isinstance(resolved, dict):
             raise ValueError(f"node {node.id} input must resolve to an object")
@@ -150,6 +167,11 @@ class WorkflowExecutor:
             completed_at=None,
         )
         run.steps.append(step)
+        if node.type == "gate":
+            return self._execute_gate(step, node, context)
+        handler = self._handlers.get(node.type)
+        if handler is None:
+            raise ValueError(f"no handler registered for node type {node.type}")
         for attempt in range(1, node.retry.max_attempts + 1):
             step.attempts = attempt
             try:
@@ -170,3 +192,57 @@ class WorkflowExecutor:
                     raise
                 await asyncio.sleep(node.retry.backoff_seconds * attempt)
         raise RuntimeError("unreachable")
+
+    @staticmethod
+    def _execute_gate(
+        step: StepRun,
+        node: NodeSpec,
+        context: dict[str, object],
+    ) -> dict[str, object] | TerminalNodeResult:
+        predicate_spec = node.predicate
+        reject_spec = node.reject
+        if predicate_spec is None or reject_spec is None:
+            raise ValueError(f"gate {node.id} is missing predicate or reject output")
+        step.attempts = 1
+        try:
+            predicate = {
+                "left": resolve_mapping(predicate_spec.left, context),
+                "operator": predicate_spec.operator,
+                "right": resolve_mapping(predicate_spec.right, context),
+            }
+            passed = evaluate_predicate(predicate)
+            step_output: dict[str, object] = {
+                "passed": passed,
+                "operator": predicate_spec.operator,
+                "left": predicate["left"],
+                "right": predicate["right"],
+            }
+            if passed:
+                persisted_step_output = persistent_view(step_output)
+                if not isinstance(persisted_step_output, dict):
+                    raise ValueError("gate step output must resolve to an object")
+                step.output = persisted_step_output
+                step.status = "completed"
+                step.completed_at = datetime.now(UTC)
+                return step_output
+            workflow_output = resolve_mapping(reject_spec.output, context)
+            if not isinstance(workflow_output, dict):
+                raise ValueError("gate reject output must resolve to an object")
+            terminal_status = workflow_output.get("status")
+            if isinstance(terminal_status, str):
+                step_output["terminal_status"] = terminal_status
+            persisted_step_output = persistent_view(step_output)
+            if not isinstance(persisted_step_output, dict):
+                raise ValueError("gate step output must resolve to an object")
+            step.output = persisted_step_output
+            step.status = "completed"
+            step.completed_at = datetime.now(UTC)
+            return TerminalNodeResult(
+                step_output=step_output,
+                workflow_output=workflow_output,
+            )
+        except Exception as error:
+            step.error = str(error)
+            step.status = "failed"
+            step.completed_at = datetime.now(UTC)
+            raise

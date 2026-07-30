@@ -1,7 +1,15 @@
 from collections.abc import Awaitable, Callable
+from datetime import UTC, datetime
+from uuid import UUID
 
 import pytest
 
+from zeromind.agents.registry import AgentRegistry, InMemoryAgentRepository
+from zeromind.bootstrap.runtime import build_workflow_executor
+from zeromind.ingestion.domain import FeedEntry
+from zeromind.ingestion.repository import InMemoryReferenceRepository
+from zeromind.ingestion.service import IngestionService
+from zeromind.shared.config import Settings
 from zeromind.workflows.domain import WorkflowDefinition
 from zeromind.workflows.dsl import parse_workflow_yaml
 from zeromind.workflows.executor import WorkflowExecutor
@@ -39,6 +47,54 @@ output:
   summary: $.steps.combine.summary
   category: $.steps.combine.category
 """
+
+
+async def reference_repository() -> tuple[InMemoryReferenceRepository, UUID]:
+    repository = InMemoryReferenceRepository()
+    service = IngestionService(repository)
+    subscription_id = UUID("11111111-1111-1111-1111-111111111111")
+    first = FeedEntry(
+        guid="runtime",
+        url="https://example.com/runtime",
+        title="Version one",
+        summary="First summary",
+        author="Ada",
+        published_at=datetime(2026, 7, 29, tzinfo=UTC),
+        updated_at=None,
+    )
+    second = FeedEntry(
+        guid="runtime",
+        url="https://example.com/runtime",
+        title="Version two",
+        summary="Second summary",
+        author="Ada",
+        published_at=datetime(2026, 7, 29, tzinfo=UTC),
+        updated_at=datetime(2026, 7, 30, tzinfo=UTC),
+    )
+    await service.ingest(
+        subscription_id=subscription_id,
+        entries=(first,),
+        fetched_at=datetime(2026, 7, 29, 12, tzinfo=UTC),
+    )
+    await service.ingest(
+        subscription_id=subscription_id,
+        entries=(second,),
+        fetched_at=datetime(2026, 7, 30, 12, tzinfo=UTC),
+    )
+    reference = (await repository.list_references())[0]
+    return repository, reference.id
+
+
+def runtime_executor(
+    workflows: InMemoryWorkflowRepository,
+    references: InMemoryReferenceRepository,
+) -> WorkflowExecutor:
+    return build_workflow_executor(
+        workflow_repository=workflows,
+        reference_repository=references,
+        agent_registry=AgentRegistry(InMemoryAgentRepository()),
+        settings=Settings(pi_command="true"),
+    )
 
 
 @pytest.mark.asyncio
@@ -170,3 +226,351 @@ output: {analysis: $.steps.analyze}
     assert persisted is not None
     assert "ARTICLE BODY" not in str(persisted)
     assert persisted.output == {"analysis": {"summary": "Structured result"}}
+
+
+@pytest.mark.asyncio
+async def test_gate_rejection_completes_without_starting_later_nodes() -> None:
+    repository = InMemoryWorkflowRepository()
+    definition = WorkflowDefinition.create(
+        parse_workflow_yaml(
+            """
+name: gated
+trigger: {events: [manual]}
+nodes:
+  - id: prepare
+    type: parallel
+  - id: gate
+    type: gate
+    depends_on: [prepare]
+    predicate:
+      left: $.steps.prepare.score
+      operator: gte
+      right: 70
+    reject:
+      output: {status: initial_rejected}
+  - id: expensive
+    type: parallel
+    depends_on: [gate]
+output: {status: qualified}
+"""
+        )
+    )
+    await repository.add_definition(definition)
+    calls: list[str] = []
+
+    async def prepare(_: dict[str, object]) -> dict[str, object]:
+        calls.append("prepare")
+        return {"score": 20}
+
+    async def expensive(_: dict[str, object]) -> dict[str, object]:
+        calls.append("expensive")
+        return {"completed": True}
+
+    run = await WorkflowExecutor(
+        repository,
+        handlers={"parallel": prepare, "expensive": expensive},
+    ).execute(
+        definition.id,
+        trigger={"event": "manual"},
+        idempotency_key="manual:gate-reject",
+    )
+
+    assert run.status == "completed"
+    assert run.output == {"status": "initial_rejected"}
+    assert calls == ["prepare"]
+    assert [step.node_id for step in run.steps] == ["prepare", "gate"]
+    assert run.steps[-1].output == {
+        "passed": False,
+        "operator": "gte",
+        "left": 20,
+        "right": 70,
+        "terminal_status": "initial_rejected",
+    }
+
+
+@pytest.mark.asyncio
+async def test_gate_passes_control_to_later_nodes() -> None:
+    repository = InMemoryWorkflowRepository()
+    definition = WorkflowDefinition.create(
+        parse_workflow_yaml(
+            """
+name: passing-gate
+trigger: {events: [manual]}
+nodes:
+  - {id: prepare, type: parallel}
+  - id: gate
+    type: gate
+    depends_on: [prepare]
+    predicate: {left: $.steps.prepare.score, operator: gte, right: 70}
+    reject: {output: {status: rejected}}
+  - {id: expensive, type: parallel, depends_on: [gate]}
+output:
+  status: qualified
+  result: $.steps.expensive.result
+"""
+        )
+    )
+    await repository.add_definition(definition)
+    calls: list[str] = []
+
+    async def handler(input: dict[str, object]) -> dict[str, object]:
+        if not calls:
+            calls.append("prepare")
+            return {"score": 90}
+        calls.append("expensive")
+        return {"result": "analyzed"}
+
+    run = await WorkflowExecutor(
+        repository,
+        handlers={"parallel": handler},
+    ).execute(
+        definition.id,
+        trigger={"event": "manual"},
+        idempotency_key="manual:gate-pass",
+    )
+
+    assert run.status == "completed"
+    assert run.output == {"status": "qualified", "result": "analyzed"}
+    assert calls == ["prepare", "expensive"]
+    assert run.steps[1].output == {
+        "passed": True,
+        "operator": "gte",
+        "left": 90,
+        "right": 70,
+    }
+
+
+@pytest.mark.asyncio
+async def test_gate_rejection_never_persists_transient_article_text() -> None:
+    repository = InMemoryWorkflowRepository()
+    definition = WorkflowDefinition.create(
+        parse_workflow_yaml(
+            """
+name: transient-gate
+trigger: {events: [manual]}
+nodes:
+  - {id: prepare, type: parallel}
+  - id: gate
+    type: gate
+    depends_on: [prepare]
+    predicate: {left: 0, operator: gte, right: 1}
+    reject:
+      output:
+        status: rejected
+        document: $.steps.prepare
+output: {status: qualified}
+"""
+        )
+    )
+    await repository.add_definition(definition)
+
+    async def prepare(_: dict[str, object]) -> dict[str, object]:
+        return {
+            "_transient_document": True,
+            "title": "Safe metadata",
+            "text": "ARTICLE BODY MUST NOT BE STORED",
+        }
+
+    run = await WorkflowExecutor(
+        repository,
+        handlers={"parallel": prepare},
+    ).execute(
+        definition.id,
+        trigger={"event": "manual"},
+        idempotency_key="manual:transient-gate",
+    )
+
+    persisted = await repository.get_run(run.id)
+    assert persisted is not None
+    assert "ARTICLE BODY" not in str(persisted)
+    assert persisted.output == {
+        "status": "rejected",
+        "document": {"title": "Safe metadata"},
+    }
+
+
+@pytest.mark.asyncio
+async def test_passing_gate_never_persists_transient_predicate_operands() -> None:
+    repository = InMemoryWorkflowRepository()
+    definition = WorkflowDefinition.create(
+        parse_workflow_yaml(
+            """
+name: transient-passing-gate
+trigger: {events: [manual]}
+nodes:
+  - {id: prepare, type: parallel}
+  - id: gate
+    type: gate
+    depends_on: [prepare]
+    predicate: {left: $.steps.prepare, operator: ne, right: null}
+    reject: {output: {status: rejected}}
+output: {status: qualified}
+"""
+        )
+    )
+    await repository.add_definition(definition)
+
+    async def prepare(_: dict[str, object]) -> dict[str, object]:
+        return {
+            "_transient_document": True,
+            "title": "Safe metadata",
+            "text": "ARTICLE BODY MUST NOT BE STORED",
+        }
+
+    run = await WorkflowExecutor(
+        repository,
+        handlers={"parallel": prepare},
+    ).execute(
+        definition.id,
+        trigger={"event": "manual"},
+        idempotency_key="manual:transient-passing-gate",
+    )
+
+    persisted = await repository.get_run(run.id)
+    assert persisted is not None
+    assert "ARTICLE BODY" not in str(persisted)
+
+
+@pytest.mark.asyncio
+async def test_reference_node_reads_the_requested_revision() -> None:
+    references, reference_id = await reference_repository()
+    workflows = InMemoryWorkflowRepository()
+    definition = WorkflowDefinition.create(
+        parse_workflow_yaml(
+            """
+name: reference-revision
+trigger: {events: [manual]}
+nodes:
+  - id: metadata
+    type: reference
+    input:
+      reference_id: $.trigger.reference_id
+      revision: 1
+output: {metadata: $.steps.metadata}
+"""
+        )
+    )
+    await workflows.add_definition(definition)
+
+    run = await runtime_executor(workflows, references).execute(
+        definition.id,
+        trigger={"event": "manual", "reference_id": str(reference_id)},
+        idempotency_key="manual:reference-revision",
+    )
+
+    assert run.output is not None
+    assert run.output["metadata"] == {
+        "reference_id": str(reference_id),
+        "revision": 1,
+        "subscription_id": "11111111-1111-1111-1111-111111111111",
+        "url": "https://example.com/runtime",
+        "title": "Version one",
+        "summary": "First summary",
+        "author": "Ada",
+        "published_at": "2026-07-29T00:00:00+00:00",
+        "updated_at": None,
+        "observed_at": "2026-07-29T12:00:00+00:00",
+    }
+
+
+@pytest.mark.asyncio
+async def test_score_node_uses_deterministic_weighted_scoring() -> None:
+    workflows = InMemoryWorkflowRepository()
+    definition = WorkflowDefinition.create(
+        parse_workflow_yaml(
+            """
+name: deterministic-score
+trigger: {events: [manual]}
+nodes:
+  - id: score
+    type: score
+    input:
+      dimensions:
+        depth: {value: 90, weight: 0.6, reason: Detailed}
+        clarity: {value: 80, weight: 0.4, reason: Clear}
+output: {score: $.steps.score}
+"""
+        )
+    )
+    await workflows.add_definition(definition)
+
+    run = await runtime_executor(
+        workflows,
+        InMemoryReferenceRepository(),
+    ).execute(
+        definition.id,
+        trigger={"event": "manual"},
+        idempotency_key="manual:deterministic-score",
+    )
+
+    assert run.output is not None
+    assert run.output["score"] == {
+        "total": 86,
+        "dimensions": {
+            "depth": {"value": 90, "weight": 0.6, "reason": "Detailed"},
+            "clarity": {"value": 80, "weight": 0.4, "reason": "Clear"},
+        },
+    }
+
+
+@pytest.mark.asyncio
+async def test_reference_node_reports_a_stable_missing_reference_error() -> None:
+    workflows = InMemoryWorkflowRepository()
+    definition = WorkflowDefinition.create(
+        parse_workflow_yaml(
+            """
+name: missing-reference
+trigger: {events: [manual]}
+nodes:
+  - id: metadata
+    type: reference
+    input: {reference_id: $.trigger.reference_id}
+"""
+        )
+    )
+    await workflows.add_definition(definition)
+    missing_id = UUID("99999999-9999-9999-9999-999999999999")
+
+    with pytest.raises(ValueError, match="reference_not_found"):
+        await runtime_executor(
+            workflows,
+            InMemoryReferenceRepository(),
+        ).execute(
+            definition.id,
+            trigger={"event": "manual", "reference_id": str(missing_id)},
+            idempotency_key="manual:missing-reference",
+        )
+
+    run = (await workflows.list_runs())[0]
+    assert run.error == f"reference_not_found:{missing_id}"
+
+
+@pytest.mark.asyncio
+async def test_reference_node_reports_a_stable_missing_revision_error() -> None:
+    references, reference_id = await reference_repository()
+    workflows = InMemoryWorkflowRepository()
+    definition = WorkflowDefinition.create(
+        parse_workflow_yaml(
+            """
+name: missing-revision
+trigger: {events: [manual]}
+nodes:
+  - id: metadata
+    type: reference
+    input:
+      reference_id: $.trigger.reference_id
+      revision: 99
+"""
+        )
+    )
+    await workflows.add_definition(definition)
+
+    with pytest.raises(ValueError, match="reference_revision_not_found"):
+        await runtime_executor(workflows, references).execute(
+            definition.id,
+            trigger={"event": "manual", "reference_id": str(reference_id)},
+            idempotency_key="manual:missing-revision",
+        )
+
+    run = (await workflows.list_runs())[0]
+    assert run.error == f"reference_revision_not_found:{reference_id}:99"

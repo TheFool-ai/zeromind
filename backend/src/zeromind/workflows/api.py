@@ -23,6 +23,9 @@ class WorkflowSourceRequest(BaseModel):
 class WorkflowValidationResponse(BaseModel):
     name: str
     topological_order: tuple[str, ...]
+    projection: str | None
+    terminal_gates: tuple[str, ...]
+    warnings: tuple[str, ...]
 
 
 class WorkflowResponse(BaseModel):
@@ -86,6 +89,23 @@ def _invalid_workflow(error: ValueError) -> HTTPException:
     )
 
 
+def _validation_warnings(spec: WorkflowSpec) -> tuple[str, ...]:
+    warnings: list[str] = []
+    for node in spec.nodes:
+        if node.type != "gate" or node.predicate is None:
+            continue
+        threshold = node.predicate.right
+        if (
+            not isinstance(threshold, bool)
+            and isinstance(threshold, int | float)
+            and not 0 <= threshold <= 100
+        ):
+            warnings.append(
+                f"gate {node.id} threshold {threshold} is outside 0 to 100"
+            )
+    return tuple(warnings)
+
+
 def create_workflow_router(
     repository: WorkflowRepository,
     executor: WorkflowExecutor,
@@ -109,6 +129,11 @@ def create_workflow_router(
         return WorkflowValidationResponse(
             name=spec.name,
             topological_order=spec.topological_order(),
+            projection=spec.projection,
+            terminal_gates=tuple(
+                node.id for node in spec.nodes if node.type == "gate"
+            ),
+            warnings=_validation_warnings(spec),
         )
 
     @router.post(
