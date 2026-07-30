@@ -12,12 +12,14 @@ from zeromind.agents.registry import (
     InMemoryAgentRepository,
     SqlAlchemyAgentRepository,
 )
+from zeromind.analysis.api import create_analysis_router
 from zeromind.analysis.projector import AnalysisProjector
 from zeromind.analysis.repository import (
     AnalysisRepository,
     InMemoryAnalysisRepository,
     SqlAlchemyAnalysisRepository,
 )
+from zeromind.analysis.service import AnalysisService
 from zeromind.bootstrap.runtime import build_workflow_executor
 from zeromind.content.network_policy import NetworkPolicy
 from zeromind.delivery.api import create_delivery_router
@@ -125,20 +127,23 @@ def create_app(
         request: Request,
         call_next: Callable[[Request], Awaitable[Response]],
     ) -> Response:
-        protected = (
-            require_auth
-            and request.method != "OPTIONS"
+        api_request = (
+            request.method != "OPTIONS"
             and request.url.path.startswith("/api/v1/")
             and request.url.path != "/api/v1/auth/token"
         )
-        if protected:
+        if api_request:
             authorization = request.headers.get("authorization", "")
             scheme, _, token = authorization.partition(" ")
-            try:
-                if scheme.lower() != "bearer" or not token:
-                    raise InvalidToken("bearer token is required")
-                resolved_token_service.verify(token)
-            except InvalidToken:
+            if scheme.lower() == "bearer" and token:
+                try:
+                    request.state.identity = resolved_token_service.verify(token)
+                except InvalidToken:
+                    return JSONResponse(
+                        status_code=401,
+                        content={"detail": {"code": "authentication_required"}},
+                    )
+            elif require_auth:
                 return JSONResponse(
                     status_code=401,
                     content={"detail": {"code": "authentication_required"}},
@@ -208,6 +213,7 @@ def create_app(
             agent_registry,
         )
     )
+    app.include_router(create_analysis_router(AnalysisService(analysis_repository)))
     app.include_router(create_identity_router(resolved_token_service))
     if webhook_repository is None:
         webhook_repository = (
