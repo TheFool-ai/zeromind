@@ -48,6 +48,30 @@ docker compose exec -T postgres psql -U zeromind -d zeromind -Atc \
 实例，也可以显式切换。订阅保存的是 `rsshub://twitter/user/vista8` 这样的逻辑路由，worker
 只在抓取前组合活动实例的 Base URL 和可选 Access Key。
 
+### 内置 Compose 实例
+
+默认 Compose 栈包含 `diygod/rsshub:latest`，但不发布宿主机端口。登录控制台后注册一次：
+
+```text
+名称：Built-in RSSHub
+Base URL：http://rsshub:1200
+Access Key：留空
+鉴权模式：key
+启用：是
+```
+
+ZeroMind 容器通过 Compose DNS 访问 `http://rsshub:1200`。RSSHub 缓存复用 Redis 数据库
+`1`，Celery 任务传输继续使用数据库 `0`，两类键不会混用。
+
+`ZEROMIND_RSSHUB_PRIVATE_HOSTS=rsshub` 只为定时 Feed 抓取精确放行主机名 `rsshub`；它不会
+放行其他 Compose 服务、`localhost` 或私网 IP 字面量。删除或清空该变量后，内置地址会再次被
+出站网络策略阻止。
+
+默认 RSSHub 镜像不包含 Chromium。需要浏览器的路由可把镜像改为
+`diygod/rsshub:chromium-bundled`，代价是更高的磁盘和内存使用。`TWITTER_AUTH_TOKEN` 等
+路由 Provider 凭证应加入 `compose.yaml` 的 `rsshub.environment`，不能写入 ZeroMind 的实例
+Access Key 或订阅地址。
+
 RSSHub 的实例 Access Key 与 Twitter 等上游凭证属于不同边界：
 
 - 实例 Access Key 在 ZeroMind 页面写入，由 `ZEROMIND_CREDENTIAL_SECRET` 加密，接口只返回

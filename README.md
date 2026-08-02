@@ -34,7 +34,9 @@ docker compose ps
 
 首次配置顺序：
 
-1. 如果使用 `rsshub://`，先在“RSSHub”中注册实例并确认它处于活动状态。
+1. Compose 已内置仅容器网络可访问的 RSSHub。在“RSSHub”中注册实例：名称填
+   `Built-in RSSHub`，Base URL 填 `http://rsshub:1200`，Access Key 留空，鉴权模式选
+   `key` 并保持启用；第一个启用的实例会自动成为活动实例。
 2. 在“订阅源”中添加 HTTP(S) Feed、`rsshub://twitter/user/vista8`，或者预览并导入
    OPML。
 3. 在“智能体”中创建 Provider Profile；`api_key_env` 填环境变量名，例如
