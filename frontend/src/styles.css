@@ -103,6 +103,9 @@ select:focus, button:focus-visible, a:focus-visible {
 .notice { padding: .75rem; font-size: .78rem; border-left: 3px solid; }
 .notice.error { color: #8a2c21; background: #f5e3df; border-color: #b83d2c; }
 .notice.success { color: var(--green); background: #dfece4; border-color: var(--green); }
+.notice.warning { color: #80530f; background: #f6ead3; border-color: #c68b2f; }
+.workflow-validation { display: grid; gap: .5rem; margin-top: .75rem; }
+.workflow-validation .notice.success { display: grid; gap: .35rem; }
 .empty { text-align: center; padding: 3rem 1rem; color: var(--muted); font-size: .85rem; }
 .preview-list { max-height: 220px; overflow: auto; border-top: 1px solid var(--line); }
 .preview-list div { display: grid; gap: .25rem; padding: .7rem 0; border-bottom: 1px solid var(--line); }

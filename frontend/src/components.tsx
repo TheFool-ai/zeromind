@@ -17,7 +17,9 @@ export const analysisStatusLabels = {
 
 export const dimensionLabels: Record<string, string> = {
   relevance: "相关性",
+  information_value: "信息价值",
   depth: "深度",
+  practicality: "实用性",
   novelty: "新颖性",
   clarity: "清晰度",
   evidence: "证据质量",

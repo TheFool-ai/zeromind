@@ -350,6 +350,43 @@ describe("ZeroMind administration", () => {
     expect(await screen.findByRole("alert")).toHaveTextContent("graph contains a cycle");
   });
 
+  it("shows workflow projection, terminal gates, and validation warnings", async () => {
+    localStorage.setItem("zeromind_token", "token");
+    window.history.replaceState({}, "", "/workflows");
+    vi.spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(response({items: []}))
+      .mockResolvedValueOnce(
+        response({
+          name: "valuable-article-analysis",
+          topological_order: [
+            "reference",
+            "screen",
+            "initial_gate",
+            "resolve",
+            "analyze",
+            "quality_score",
+            "fine_gate"
+          ],
+          projection: "content_analysis_v1",
+          terminal_gates: ["initial_gate", "fine_gate"],
+          warnings: ["请确认两个 Agent 的输出 Schema 与投影契约一致。"]
+        })
+      );
+    render(<App />);
+
+    await userEvent.type(
+      await screen.findByLabelText("YAML 定义"),
+      "name: valuable-article-analysis"
+    );
+    await userEvent.click(screen.getByRole("button", {name: "校验"}));
+
+    expect(await screen.findByText(/content_analysis_v1/)).toBeVisible();
+    expect(screen.getByText(/终止门禁.*initial_gate.*fine_gate/)).toBeVisible();
+    expect(
+      screen.getByText("请确认两个 Agent 的输出 Schema 与投影契约一致。")
+    ).toBeVisible();
+  });
+
   it("returns to login when the administrator token expires", async () => {
     localStorage.setItem("zeromind_token", "expired");
     window.history.replaceState({}, "", "/references");

@@ -18,6 +18,21 @@ docker compose ps
 回退数据库。需要回退迁移时，先停止写入服务并针对目标 revision 执行
 `docker compose run --rm migrate alembic downgrade <revision>`。
 
+### 分析与笔记迁移
+
+| revision | 新增事实 | 安全回滚目标 | 回滚影响 |
+| --- | --- | --- | --- |
+| `0008_content_analyses` | `content_analyses`、`content_analysis_tags`、`analysis_decision_overrides` | `0007_rsshub_instances` | 删除全部结构化分析、标签和人工改判历史 |
+| `0009_notes` | `notes` 及用户/引用、用户/分析索引 | `0008_content_analyses` | 删除全部用户阅读笔记，保留分析 |
+
+从包含 `0009_notes` 的版本回退到 `0007_rsshub_instances` 必须先导出笔记和分析。不要在旧
+应用仍写入时执行 downgrade。升级完成后用下列命令确认当前 revision：
+
+```bash
+docker compose exec -T postgres psql -U zeromind -d zeromind -Atc \
+  "select version_num from alembic_version"
+```
+
 ## 进程职责
 
 - `api`：同步管理 API、管理员鉴权和 OpenAPI。
@@ -54,6 +69,12 @@ RSSHub 的实例 Access Key 与 Twitter 等上游凭证属于不同边界：
 docker compose exec -T postgres pg_dump -U zeromind -Fc zeromind > zeromind.dump
 ```
 
+备份必须覆盖 `content_analyses`、`content_analysis_tags`、
+`analysis_decision_overrides` 和 `notes`；它们分别保存生成结果、检索标签、人工决定历史和
+用户笔记。使用上面的整库 `pg_dump` 会包含这些表。若采用表级备份，必须显式纳入四张表及
+它们引用的 `subscriptions`、`content_references`、`workflow_definitions` 和
+`workflow_runs`。
+
 恢复到空数据库：
 
 ```bash
@@ -73,6 +94,8 @@ Redis 丢失后可以从 PostgreSQL 的到期订阅、未派发 outbox 和过期
 - 就绪：`GET /health/ready`，依赖状态不是全部 `up` 时返回 503。
 - 关注：连续 Feed 失败数、pending/processing outbox 年龄、失败工作流比例、webhook exhaustion、
   worker 队列深度、PostgreSQL 磁盘空间。
+- 分析漏斗应记录初筛通过率、细筛通过率、因初筛而节省的全文解析/模型调用比例，以及
+  人工改判率。按工作流版本和 Agent 版本分组，避免配置变更掩盖趋势。
 - 日志中禁止输出 Provider 密钥、RSSHub Access Key、webhook secret、Bearer token 和解析出的
   正文。
 
@@ -95,6 +118,39 @@ Redis 丢失后可以从 PostgreSQL 的到期订阅、未派发 outbox 和过期
 确认 Agent 引用的 Provider Profile 已启用、对应环境变量已注入 worker，并检查
 `ZEROMIND_PI_COMMAND`。Pi 运行时禁用 shell、文件系统和内置工具，输出还必须通过 Agent 的
 JSON Schema。
+
+Provider 不可用、凭证缺失、Pi 超时或输出 Schema 不匹配时，工作流失败且不会写入部分
+`ContentAnalysis`。修复 Provider 后使用相同业务触发重新执行；幂等键会避免已经成功的运行
+重复产生分析。
+
+### Agent Schema mismatch
+
+日志或运行记录出现 `AgentInputError` / `AgentOutputError` 时：
+
+1. 对照 `docs/examples/screening-agent.json` 或 `analysis-agent.json` 检查 required、
+   `additionalProperties`、整数范围和数组上限；
+2. 确认工作流传给初筛 Agent 的只有 `metadata`、`audience`，传给分析 Agent 的是
+   `metadata`、`document`、`audience` 和可选 `maximum_quotes`；
+3. 新建或更新 Agent 会产生新版本，重新校验工作流后再激活。
+
+不要通过放宽投影 Schema 来容忍不完整结果；应修复 Agent prompt 或输出契约。
+
+### analysis_projection_invalid
+
+该错误表示工作流已经正常运行，但最终输出不能安全投影。系统会把运行标记为失败，清除运行
+输出和步骤输出，因此不会暴露正文或留下半成品分析。检查：
+
+- 工作流声明必须是 `projection: content_analysis_v1`；
+- 三种终止路径都必须输出 `schema_version`、`status`、`reference` 和 `screening`；
+- `fine_rejected` / `qualified` 还必须输出 `content` 与由 `score` 节点生成的 `score`；
+- 触发器中的 `reference_id`、`revision` 必须与输出引用一致；
+- 内容评分维度必须与确定性评分维度完全一致。
+
+### 门禁操作数类型错误
+
+`gate predicate operands are not comparable`（或同类类型错误）是工作流配置/Agent 契约故障，
+不是业务拒绝。确认初筛 `score` 和细筛 `total` 都是 0–100 的整数，阈值没有写成字符串。
+门禁失败不会被投影成“初筛拒绝”或“细筛拒绝”，以免把系统错误伪装成内容判断。
 
 ### webhook 失败
 

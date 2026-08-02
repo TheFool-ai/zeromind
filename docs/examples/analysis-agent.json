@@ -1,0 +1,212 @@
+{
+  "name": "文章结构化分析",
+  "description": "从运行期解析出的原文生成分类、摘要、观点、金句和六维评分。",
+  "capabilities": [
+    "analyze-content"
+  ],
+  "system_prompt": "你是文章结构化分析 Agent。只能根据输入中的 metadata 和 document 提取事实、观点与原句，不得补充文档之外的事实。生成主分类、次级分类、标签、一句话摘要、完整摘要、主要观点、金句、六个评分维度以及推荐结论。金句必须逐字来自 document，最多 5 条，每条不超过 300 字符；没有合适原句时返回空数组。每个评分都必须给出可核对的理由。",
+  "provider_profile_id": "00000000-0000-0000-0000-000000000100",
+  "input_schema": {
+    "type": "object",
+    "additionalProperties": false,
+    "required": [
+      "metadata",
+      "document",
+      "audience"
+    ],
+    "properties": {
+      "metadata": {
+        "type": "object"
+      },
+      "document": {
+        "type": "object",
+        "required": [
+          "text"
+        ],
+        "properties": {
+          "text": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      },
+      "audience": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 200
+      },
+      "maximum_quotes": {
+        "type": "integer",
+        "minimum": 0,
+        "maximum": 5
+      }
+    }
+  },
+  "output_schema": {
+    "type": "object",
+    "additionalProperties": false,
+    "required": [
+      "primary_category",
+      "secondary_categories",
+      "tags",
+      "one_sentence_summary",
+      "summary",
+      "viewpoints",
+      "key_quotes",
+      "scores",
+      "recommendation_level",
+      "recommendation_reason"
+    ],
+    "properties": {
+      "primary_category": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 160
+      },
+      "secondary_categories": {
+        "type": "array",
+        "maxItems": 10,
+        "uniqueItems": true,
+        "items": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 160
+        }
+      },
+      "tags": {
+        "type": "array",
+        "maxItems": 20,
+        "uniqueItems": true,
+        "items": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 80
+        }
+      },
+      "one_sentence_summary": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 500
+      },
+      "summary": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 5000
+      },
+      "viewpoints": {
+        "type": "array",
+        "maxItems": 10,
+        "items": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "statement",
+            "explanation"
+          ],
+          "properties": {
+            "statement": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 500
+            },
+            "explanation": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 2000
+            }
+          }
+        }
+      },
+      "key_quotes": {
+        "type": "array",
+        "maxItems": 5,
+        "items": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "text",
+            "context"
+          ],
+          "properties": {
+            "text": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 300
+            },
+            "context": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "maxLength": 200
+            }
+          }
+        }
+      },
+      "scores": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "relevance",
+          "information_value",
+          "depth",
+          "practicality",
+          "novelty",
+          "clarity"
+        ],
+        "properties": {
+          "relevance": {
+            "$ref": "#/$defs/score"
+          },
+          "information_value": {
+            "$ref": "#/$defs/score"
+          },
+          "depth": {
+            "$ref": "#/$defs/score"
+          },
+          "practicality": {
+            "$ref": "#/$defs/score"
+          },
+          "novelty": {
+            "$ref": "#/$defs/score"
+          },
+          "clarity": {
+            "$ref": "#/$defs/score"
+          }
+        }
+      },
+      "recommendation_level": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 80
+      },
+      "recommendation_reason": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 2000
+      }
+    },
+    "$defs": {
+      "score": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "value",
+          "reason"
+        ],
+        "properties": {
+          "value": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 100
+          },
+          "reason": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 2000
+          }
+        }
+      }
+    }
+  }
+}

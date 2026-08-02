@@ -11,7 +11,11 @@ ZeroMind 是一个以“引用优先”为原则的 RSS 信息收集与 Agent �
 - 每 30 分钟认领到期 Feed，并使用 10 分钟时间重叠、HTTP 条件请求和稳定条目标识保证幂等。
 - 安全地即时解析原文：限制协议、大小、重定向，并阻止内网/本地地址。
 - 注册 Provider Profile 和多个 Agent；密钥只保存环境变量名，执行内核使用 Pi。
-- 使用受限 YAML DSL 编排 DAG，支持依赖、并行层、超时、有限重试和结构化结果。
+- 使用受限 YAML DSL 编排 DAG，支持元数据初筛、确定性门禁、运行期原文解析、细筛和
+  六维加权评分。
+- 将分类、摘要、观点、金句、评分和执行溯源投影成幂等的结构化分析；信息流默认只展示
+  有效结论为“通过”的内容。
+- 支持带审计记录的人工改判，以及按用户隔离的阅读笔记创建、编辑和删除。
 - 通过事务型 outbox 恢复任务，通过 HMAC-SHA256 webhook 投递结果。
 - 提供带管理员令牌的 React 管理控制台。
 
@@ -33,10 +37,37 @@ docker compose ps
 1. 如果使用 `rsshub://`，先在“RSSHub”中注册实例并确认它处于活动状态。
 2. 在“订阅源”中添加 HTTP(S) Feed、`rsshub://twitter/user/vista8`，或者预览并导入
    OPML。
-3. 创建 Provider Profile；`api_key_env` 填写环境变量名，例如 `OPENAI_API_KEY`。
-4. 创建 Agent，配置 system prompt、capabilities 以及 JSON Schema 输入输出契约。
-5. 复制 [示例工作流](docs/examples/article-analysis.yaml)，替换 `agent_id`，校验并激活。
-6. 可选：注册 webhook，`secret_env` 同样填写环境变量名。
+3. 在“智能体”中创建 Provider Profile；`api_key_env` 填环境变量名，例如
+   `OPENAI_API_KEY`。把 API 返回的 Provider ID 记下来。
+4. 复制 [元数据初筛 Agent](docs/examples/screening-agent.json)，把其中固定的无效
+   `provider_profile_id` 替换为第 3 步的 Provider ID，再注册；记录返回的初筛 Agent ID。
+5. 复制 [全文分析 Agent](docs/examples/analysis-agent.json)，替换同一个
+   `provider_profile_id` 后注册；记录返回的分析 Agent ID。
+6. 复制 [完整分析工作流](docs/examples/article-analysis.yaml)，分别把
+   `00000000-0000-0000-0000-000000000101` 和
+   `00000000-0000-0000-0000-000000000102` 替换为第 4、5 步返回的 Agent ID。
+7. 在“工作流”中先校验 YAML；确认投影为 `content_analysis_v1`、终止门禁为
+   `initial_gate` 和 `fine_gate` 且无未处理警告后，保存草稿并激活。
+8. 可选：注册 webhook，`secret_env` 同样填写环境变量名。
+
+两个 Agent 示例中的 `provider_profile_id` 和工作流中的两个 `agent_id` 都是刻意设置的
+占位 UUID，不能直接用于激活。Provider 密钥必须注入 API/worker 容器环境，JSON 和数据库中
+只保存环境变量名。
+
+## 使用结构化信息流
+
+- “信息流”默认显示有效决定为“通过”的分析；切换“已拒绝”可审计初筛拒绝、细筛拒绝和
+  被人工拒绝的内容。
+- 可按最低分、分类、订阅源和日期区间筛选。卡片只包含 RSS 元数据和结构化分析，不包含
+  抓取的文章正文。
+- 详情页展示摘要、观点、最多 5 条且每条最多 300 字符的金句、确定性加权评分、推荐理由、
+  工作流版本、Agent、Provider 和模型溯源。
+- 人工改判会追加不可覆盖的审计记录，不会修改 Agent 生成状态、分数或原始分析。
+- 阅读笔记按登录身份隔离，可关联当前分析或只关联原文引用；支持创建、编辑和删除。
+
+元数据初筛不会解析原文。只有通过初筛门禁的内容才会在单次工作流运行期间解析正文并调用
+全文分析 Agent。正文会在步骤、运行结果、outbox 和 API 响应持久化之前被移除；系统没有正文
+读取或持久化接口。
 
 ## 架构
 
@@ -61,7 +92,9 @@ flowchart LR
 - `ingestion`：Feed 条目标识、引用和元数据修订。
 - `content`：无持久化的安全原文解析。
 - `agents`：Provider、Agent Registry 与 Pi Gateway。
-- `workflows`：DSL、定义、运行和步骤时间线。
+- `workflows`：安全 DSL、确定性评分与门禁、定义、运行和步骤时间线。
+- `analysis`：结构化分析投影、信息流查询、游标和人工决定审计。
+- `notes`：用户拥有的引用/分析笔记及所有权校验。
 - `delivery`：webhook 终点与签名投递。
 - `identity` / `shared`：管理员鉴权、数据库和 outbox。
 

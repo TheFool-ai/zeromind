@@ -1,24 +1,113 @@
-name: article-analysis
+name: valuable-article-analysis
 trigger:
   events:
     - reference.discovered
+    - reference.updated
+    - manual
+projection: content_analysis_v1
 nodes:
-  - id: resolve
-    type: resolve
+  - id: reference
+    type: reference
     input:
       reference_id: $.trigger.reference_id
-    timeout_seconds: 30
-  - id: summarize
+      revision: $.trigger.revision
+
+  # 替换为注册 screening-agent.json 后返回的 Agent ID。
+  - id: screen
     type: agent
-    agent_id: 00000000-0000-0000-0000-000000000000
+    agent_id: 00000000-0000-0000-0000-000000000101
+    depends_on:
+      - reference
+    input:
+      metadata: $.steps.reference
+      audience: software-builders
+
+  - id: initial_gate
+    type: gate
+    depends_on:
+      - screen
+    predicate:
+      left: $.steps.screen.score
+      operator: gte
+      right: 30
+    reject:
+      output:
+        schema_version: 1
+        status: initial_rejected
+        reference: $.steps.reference
+        screening: $.steps.screen
+
+  - id: resolve
+    type: resolve
+    depends_on:
+      - initial_gate
+    input:
+      reference_id: $.trigger.reference_id
+
+  # 替换为注册 analysis-agent.json 后返回的 Agent ID。
+  - id: analyze
+    type: agent
+    agent_id: 00000000-0000-0000-0000-000000000102
     depends_on:
       - resolve
     input:
+      metadata: $.steps.reference
       document: $.steps.resolve
-    timeout_seconds: 120
-    retry:
-      max_attempts: 3
-      backoff_seconds: 2
-output:
-  analysis: $.steps.summarize
+      audience: software-builders
+      maximum_quotes: 5
 
+  - id: quality_score
+    type: score
+    depends_on:
+      - analyze
+    input:
+      dimensions:
+        relevance:
+          value: $.steps.analyze.scores.relevance.value
+          reason: $.steps.analyze.scores.relevance.reason
+          weight: 0.20
+        information_value:
+          value: $.steps.analyze.scores.information_value.value
+          reason: $.steps.analyze.scores.information_value.reason
+          weight: 0.25
+        depth:
+          value: $.steps.analyze.scores.depth.value
+          reason: $.steps.analyze.scores.depth.reason
+          weight: 0.20
+        practicality:
+          value: $.steps.analyze.scores.practicality.value
+          reason: $.steps.analyze.scores.practicality.reason
+          weight: 0.15
+        novelty:
+          value: $.steps.analyze.scores.novelty.value
+          reason: $.steps.analyze.scores.novelty.reason
+          weight: 0.10
+        clarity:
+          value: $.steps.analyze.scores.clarity.value
+          reason: $.steps.analyze.scores.clarity.reason
+          weight: 0.10
+
+  - id: fine_gate
+    type: gate
+    depends_on:
+      - quality_score
+    predicate:
+      left: $.steps.quality_score.total
+      operator: gte
+      right: 70
+    reject:
+      output:
+        schema_version: 1
+        status: fine_rejected
+        reference: $.steps.reference
+        screening: $.steps.screen
+        content: $.steps.analyze
+        score: $.steps.quality_score
+
+output:
+  schema_version: 1
+  status: qualified
+  reference: $.steps.reference
+  screening: $.steps.screen
+  content: $.steps.analyze
+  score: $.steps.quality_score
