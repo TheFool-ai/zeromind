@@ -47,3 +47,51 @@ async def test_network_policy_rejects_credentials_and_non_http_schemes() -> None
     with pytest.raises(BlockedNetworkTarget):
         await policy.validate_url("file:///etc/passwd")
 
+
+@pytest.mark.asyncio
+async def test_network_policy_accepts_private_address_for_exact_trusted_host() -> None:
+    async def private_resolver(_: str) -> tuple[str, ...]:
+        return ("172.20.0.8",)
+
+    policy = NetworkPolicy(
+        resolver=private_resolver,
+        private_host_allowlist={"RSSHUB."},
+    )
+
+    target = await policy.validate_url("http://rsshub:1200/test/1")
+
+    assert target.host == "rsshub"
+    assert target.addresses == ("172.20.0.8",)
+
+
+@pytest.mark.asyncio
+async def test_network_policy_rejects_private_address_for_untrusted_host() -> None:
+    async def private_resolver(_: str) -> tuple[str, ...]:
+        return ("172.20.0.8",)
+
+    policy = NetworkPolicy(
+        resolver=private_resolver,
+        private_host_allowlist={"rsshub"},
+    )
+
+    with pytest.raises(BlockedNetworkTarget):
+        await policy.validate_url("http://postgres:5432/")
+
+
+@pytest.mark.asyncio
+async def test_network_policy_does_not_allow_private_ip_literals() -> None:
+    policy = NetworkPolicy(private_host_allowlist={"172.20.0.8"})
+
+    with pytest.raises(BlockedNetworkTarget):
+        await policy.validate_url("http://172.20.0.8:1200/test/1")
+
+
+@pytest.mark.asyncio
+async def test_network_policy_requires_explicit_private_host_allowlist() -> None:
+    async def private_resolver(_: str) -> tuple[str, ...]:
+        return ("172.20.0.8",)
+
+    policy = NetworkPolicy(resolver=private_resolver)
+
+    with pytest.raises(BlockedNetworkTarget):
+        await policy.validate_url("http://rsshub:1200/test/1")

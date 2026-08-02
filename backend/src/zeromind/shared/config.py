@@ -14,6 +14,7 @@ class Settings(BaseSettings):
     environment: str = "development"
     database_url: str = "sqlite+aiosqlite:///./data/zeromind.db"
     redis_url: str = "redis://localhost:6379/0"
+    rsshub_private_hosts: str = ""
     pi_command: str = "node /app/pi-runner/dist/main.js"
     admin_username: str = "admin"
     admin_password: str = Field(default="change-me", repr=False)
@@ -22,6 +23,14 @@ class Settings(BaseSettings):
         default="development-only-credential-secret",
         repr=False,
     )
+
+    @property
+    def rsshub_private_hostnames(self) -> frozenset[str]:
+        return frozenset(
+            normalized
+            for item in self.rsshub_private_hosts.split(",")
+            if (normalized := item.strip().lower().rstrip("."))
+        )
 
 
 @lru_cache
