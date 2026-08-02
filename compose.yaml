@@ -53,6 +53,7 @@ services:
       NODE_ENV: production
       CACHE_TYPE: redis
       REDIS_URL: redis://redis:6379/1
+      TWITTER_AUTH_TOKEN: ${TWITTER_AUTH_TOKEN:-}
     depends_on:
       redis:
         condition: service_healthy
