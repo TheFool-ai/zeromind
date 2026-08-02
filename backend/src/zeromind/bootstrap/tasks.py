@@ -164,7 +164,11 @@ async def _poll_feed(subscription_id: str) -> dict[str, int]:
                 SqlAlchemyRSSHubInstanceRepository(database.sessions),
                 CredentialCipher(settings.credential_secret),
             ),
-            feed_client=FeedClient(network_policy=NetworkPolicy()),
+            feed_client=FeedClient(
+                network_policy=NetworkPolicy(
+                    private_host_allowlist=settings.rsshub_private_hostnames,
+                )
+            ),
         )
         if isinstance(document, FeedDocument):
             result = await IngestionService(references).ingest(
