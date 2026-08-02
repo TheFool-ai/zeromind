@@ -189,7 +189,7 @@ nodes: [{id: noop, type: parallel}]
     )
 
     events = await outbox.claim(
-        now=datetime(2026, 7, 31, 4, tzinfo=UTC),
+        now=datetime.now(UTC),
         limit=10,
         lease=timedelta(minutes=1),
     )
