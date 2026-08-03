@@ -10,7 +10,7 @@ ZeroMind 是一个以“引用优先”为原则的 RSS 信息收集与 Agent �
   Access Key。
 - 每 30 分钟认领到期 Feed，并使用 10 分钟时间重叠、HTTP 条件请求和稳定条目标识保证幂等。
 - 安全地即时解析原文：限制协议、大小、重定向，并阻止内网/本地地址。
-- 注册 Provider Profile 和多个 Agent；密钥只保存环境变量名，执行内核使用 Pi。
+- 注册 Provider Profile 和多个带不可变版本的 Agent；密钥只保存环境变量名，执行内核使用 Pi。
 - 使用受限 YAML DSL 编排 DAG，支持元数据初筛、确定性门禁、运行期原文解析、细筛和
   六维加权评分。
 - 将分类、摘要、观点、金句、评分和执行溯源投影成幂等的结构化分析；信息流默认只展示
@@ -41,20 +41,23 @@ docker compose ps
    OPML。
 3. 在“智能体”中创建 Provider Profile；`api_key_env` 填环境变量名，例如
    `OPENAI_API_KEY`。把 API 返回的 Provider ID 记下来。
-4. 复制 [元数据初筛 Agent](docs/examples/screening-agent.json)，把其中固定的无效
-   `provider_profile_id` 替换为第 3 步的 Provider ID，再注册；记录返回的初筛 Agent ID。
-5. 复制 [全文分析 Agent](docs/examples/analysis-agent.json)，替换同一个
-   `provider_profile_id` 后注册；记录返回的分析 Agent ID。
-6. 复制 [完整分析工作流](docs/examples/article-analysis.yaml)，分别把
-   `00000000-0000-0000-0000-000000000101` 和
-   `00000000-0000-0000-0000-000000000102` 替换为第 4、5 步返回的 Agent ID。
-7. 在“工作流”中先校验 YAML；确认投影为 `content_analysis_v1`、终止门禁为
-   `initial_gate` 和 `fine_gate` 且无未处理警告后，保存草稿并激活。
-8. 可选：注册 webhook，`secret_env` 同样填写环境变量名。
+4. 若 Provider 配置名为 `GLM`，运行下面的幂等注册命令。它会注册六个分析 Agent、替换 DSL
+   中的 Agent ID，并保存及激活 `bestblogs-six-agent-analysis` 工作流：
 
-两个 Agent 示例中的 `provider_profile_id` 和工作流中的两个 `agent_id` 都是刻意设置的
-占位 UUID，不能直接用于激活。Provider 密钥必须注入 API/worker 容器环境，JSON 和数据库中
-只保存环境变量名。
+   ```bash
+   docker compose run --rm api \
+     python scripts/register_analysis_agents.py --provider-name GLM
+   ```
+
+   也可以用 `--provider-id <UUID>` 精确指定 Provider。
+5. 在“智能体”确认六个 Agent 均已启用；“查看版本”可以检查 system prompt、能力和 Schema
+   历史。在“工作流”确认完整分析工作流已激活。
+6. 可选：注册 webhook，`secret_env` 同样填写环境变量名。
+
+六份 [Agent JSON 示例](docs/examples) 中的 `provider_profile_id` 和
+[完整分析工作流](docs/examples/article-analysis.yaml) 中的六个 `agent_id` 都是占位 UUID；注册
+脚本会使用数据库中的真实 ID。Provider 密钥必须注入 API/worker 容器环境，JSON、Agent 版本
+和 session 中都不会保存密钥。
 
 ## 使用结构化信息流
 
@@ -67,9 +70,9 @@ docker compose ps
 - 人工改判会追加不可覆盖的审计记录，不会修改 Agent 生成状态、分数或原始分析。
 - 阅读笔记按登录身份隔离，可关联当前分析或只关联原文引用；支持创建、编辑和删除。
 
-元数据初筛不会解析原文。只有通过初筛门禁的内容才会在单次工作流运行期间解析正文并调用
-全文分析 Agent。正文会在步骤、运行结果、outbox 和 API 响应持久化之前被移除；系统没有正文
-读取或持久化接口。
+元数据初筛不会解析原文。只有通过初筛门禁的内容才会在单次工作流运行期间解析正文，并按
+核心分析、分类、评分、审核、最终优化的顺序调用其余五个 Agent。每次调用或重试都会生成一条
+可关联工作流、步骤和不可变 Agent 版本的 session；正文会先替换为哈希和字符数再持久化。
 
 ## 架构
 
