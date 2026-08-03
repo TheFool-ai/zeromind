@@ -188,12 +188,12 @@ def create_app(
             if resolved_database is not None
             else InMemoryAgentRepository()
         )
-    app.include_router(create_agent_router(agent_registry))
     resolved_agent_sessions = agent_session_repository or (
         SqlAlchemyAgentSessionRepository(resolved_database.sessions)
         if resolved_database is not None
         else InMemoryAgentSessionRepository()
     )
+    app.include_router(create_agent_router(agent_registry, resolved_agent_sessions))
     if workflow_repository is None:
         workflow_repository = (
             SqlAlchemyWorkflowRepository(resolved_database.sessions)
