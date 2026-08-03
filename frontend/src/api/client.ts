@@ -92,6 +92,7 @@ export type Reference = {
   subscription_id: string;
   original_url: string | null;
   current_revision: number;
+  published_at: string | null;
   first_seen_at: string;
   last_seen_at: string;
 };

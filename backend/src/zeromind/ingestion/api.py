@@ -4,7 +4,11 @@ from uuid import UUID
 from fastapi import APIRouter, HTTPException, status
 from pydantic import BaseModel, ConfigDict
 
-from zeromind.ingestion.domain import ContentReference, ReferenceRevision
+from zeromind.ingestion.domain import (
+    ContentReference,
+    ReferenceRevision,
+    ReferenceSummary,
+)
 from zeromind.ingestion.repository import ReferenceRepository
 
 
@@ -43,8 +47,19 @@ class RevisionResponse(BaseModel):
         return cls.model_validate(value)
 
 
+class ReferenceListItemResponse(ReferenceResponse):
+    published_at: datetime | None
+
+    @classmethod
+    def from_summary(cls, value: ReferenceSummary) -> "ReferenceListItemResponse":
+        return cls(
+            **ReferenceResponse.from_domain(value.reference).model_dump(),
+            published_at=value.published_at,
+        )
+
+
 class ReferenceListResponse(BaseModel):
-    items: list[ReferenceResponse]
+    items: list[ReferenceListItemResponse]
 
 
 class ReferenceDetailResponse(ReferenceResponse):
@@ -56,9 +71,9 @@ def create_reference_router(repository: ReferenceRepository) -> APIRouter:
 
     @router.get("", response_model=ReferenceListResponse)
     async def list_references() -> ReferenceListResponse:
-        references = await repository.list_references()
+        summaries = await repository.list_reference_summaries()
         return ReferenceListResponse(
-            items=[ReferenceResponse.from_domain(item) for item in references]
+            items=[ReferenceListItemResponse.from_summary(item) for item in summaries]
         )
 
     @router.get("/{reference_id}", response_model=ReferenceDetailResponse)
@@ -76,4 +91,3 @@ def create_reference_router(repository: ReferenceRepository) -> APIRouter:
         )
 
     return router
-

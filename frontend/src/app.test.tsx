@@ -400,6 +400,32 @@ describe("ZeroMind administration", () => {
     expect(localStorage.getItem("zeromind_token")).toBeNull();
   });
 
+  it("shows publication time for content references", async () => {
+    localStorage.setItem("zeromind_token", "token");
+    window.history.replaceState({}, "", "/references");
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      response({
+        items: [
+          {
+            id: "11111111-1111-1111-1111-111111111111",
+            subscription_id: "22222222-2222-2222-2222-222222222222",
+            identity_key: "guid:42",
+            original_url: "https://example.com/post",
+            current_revision: 1,
+            published_at: "2026-07-29T00:00:00Z",
+            first_seen_at: "2030-01-01T00:00:00Z",
+            last_seen_at: "2030-01-01T00:00:00Z"
+          }
+        ]
+      })
+    );
+
+    render(<App />);
+
+    expect(await screen.findByText(/2026年7月29日/)).toBeVisible();
+    expect(screen.queryByText(/2030年1月1日/)).not.toBeInTheDocument();
+  });
+
   it("renders the structured information flow in Chinese", async () => {
     localStorage.setItem("zeromind_token", "token");
     window.history.replaceState({}, "", "/analyses");

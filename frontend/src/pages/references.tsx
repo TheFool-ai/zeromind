@@ -26,7 +26,7 @@ export function ReferencesPage() {
               <article className="reference-card" key={item.id}>
                 <div className="reference-meta">
                   <span>REV {item.current_revision}</span>
-                  <time>{formatTime(item.first_seen_at)}</time>
+                  <time>{formatTime(item.published_at)}</time>
                 </div>
                 <h2>{item.original_url ? new URL(item.original_url).hostname : "无原文地址"}</h2>
                 {item.original_url ? <a href={item.original_url} target="_blank" rel="noreferrer">{item.original_url}</a> : null}

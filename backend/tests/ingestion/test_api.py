@@ -44,6 +44,7 @@ def test_reference_list_and_detail_expose_metadata_not_article_body() -> None:
     detail = client.get(f"/api/v1/references/{reference_id}")
 
     assert listed.status_code == 200
+    assert listed.json()["items"][0]["published_at"] == "2026-07-29T00:00:00Z"
     assert detail.status_code == 200
     assert detail.json()["revisions"][0]["summary"] == "RSS summary only"
     assert "body" not in detail.text

@@ -89,6 +89,12 @@ class ContentReference:
 
 
 @dataclass(frozen=True, slots=True)
+class ReferenceSummary:
+    reference: ContentReference
+    published_at: datetime | None
+
+
+@dataclass(frozen=True, slots=True)
 class ReferenceRevision:
     id: uuid.UUID
     reference_id: uuid.UUID
@@ -132,4 +138,3 @@ class ReferenceEvent:
     reference_id: uuid.UUID
     revision: int
     idempotency_key: str
-

@@ -151,3 +151,47 @@ async def test_sql_repository_reads_a_specific_reference_revision(
     assert (await repository.get_revision(reference.id, 2)).title == "Version two"
     with pytest.raises(KeyError, match=str(reference.id)):
         await repository.get_revision(reference.id, 99)
+
+
+@pytest.mark.asyncio
+async def test_sql_repository_lists_current_reference_publication(
+    sessions: async_sessionmaker[AsyncSession],
+) -> None:
+    repository = SqlAlchemyReferenceRepository(sessions)
+    service = IngestionService(repository)
+    subscription_id = UUID("11111111-1111-1111-1111-111111111111")
+    first = FeedEntry(
+        guid="publication",
+        url="https://example.com/publication",
+        title="First title",
+        summary=None,
+        author=None,
+        published_at=datetime(2026, 7, 28, tzinfo=UTC),
+        updated_at=None,
+    )
+    second = FeedEntry(
+        guid="publication",
+        url="https://example.com/publication",
+        title="Second title",
+        summary=None,
+        author=None,
+        published_at=datetime(2026, 7, 29, tzinfo=UTC),
+        updated_at=datetime(2026, 7, 30, tzinfo=UTC),
+    )
+
+    await service.ingest(
+        subscription_id=subscription_id,
+        entries=(first,),
+        fetched_at=datetime(2026, 7, 29, 12, tzinfo=UTC),
+    )
+    await service.ingest(
+        subscription_id=subscription_id,
+        entries=(second,),
+        fetched_at=datetime(2026, 7, 30, 12, tzinfo=UTC),
+    )
+
+    summaries = await repository.list_reference_summaries()
+
+    assert len(summaries) == 1
+    assert summaries[0].reference.current_revision == 2
+    assert summaries[0].published_at == datetime(2026, 7, 29, tzinfo=UTC)

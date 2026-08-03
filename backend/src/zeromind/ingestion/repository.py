@@ -6,7 +6,11 @@ from typing import Protocol
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from zeromind.ingestion.domain import ContentReference, ReferenceRevision
+from zeromind.ingestion.domain import (
+    ContentReference,
+    ReferenceRevision,
+    ReferenceSummary,
+)
 from zeromind.ingestion.models import ContentReferenceModel, ReferenceRevisionModel
 from zeromind.shared.models import OutboxEventModel
 
@@ -47,6 +51,8 @@ class ReferenceRepository(Protocol):
     ) -> ContentReference | None: ...
 
     async def list_references(self) -> tuple[ContentReference, ...]: ...
+
+    async def list_reference_summaries(self) -> tuple[ReferenceSummary, ...]: ...
 
     async def list_revisions(
         self,
@@ -113,6 +119,18 @@ class InMemoryReferenceRepository:
 
     async def list_references(self) -> tuple[ContentReference, ...]:
         return tuple(self._references.values())
+
+    async def list_reference_summaries(self) -> tuple[ReferenceSummary, ...]:
+        return tuple(
+            ReferenceSummary(
+                reference=reference,
+                published_at=max(
+                    self._revisions[reference.id],
+                    key=lambda revision: revision.number,
+                ).published_at,
+            )
+            for reference in self._references.values()
+        )
 
     async def list_revisions(
         self,
@@ -311,6 +329,34 @@ class SqlAlchemyReferenceRepository:
                 )
             )
             return tuple(_reference_to_domain(model) for model in models)
+
+    async def list_reference_summaries(self) -> tuple[ReferenceSummary, ...]:
+        async with self._sessions() as session:
+            rows = await session.execute(
+                select(
+                    ContentReferenceModel,
+                    ReferenceRevisionModel.published_at,
+                )
+                .join(
+                    ReferenceRevisionModel,
+                    (
+                        ReferenceRevisionModel.reference_id
+                        == ContentReferenceModel.id
+                    )
+                    & (
+                        ReferenceRevisionModel.number
+                        == ContentReferenceModel.current_revision
+                    ),
+                )
+                .order_by(ContentReferenceModel.first_seen_at.desc())
+            )
+            return tuple(
+                ReferenceSummary(
+                    reference=_reference_to_domain(model),
+                    published_at=_as_utc(published_at),
+                )
+                for model, published_at in rows.all()
+            )
 
     async def list_revisions(
         self,
