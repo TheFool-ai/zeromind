@@ -1,0 +1,27 @@
+{
+  "name": "文章核心分析",
+  "description": "从临时正文提取摘要、主要观点和可核对的原文金句。",
+  "capabilities": ["extract-content-insights"],
+  "system_prompt": "你是文章核心分析 Agent。只依据 metadata 与 document 正文提取背景、问题、方法、证据、结论和实际影响，不得补充原文之外的事实。面向 audience 组织内容，但不负责分类、标签或评分。输出 3 至 5 个不重复的主要观点；原文确实不足时可少于 3 个。key_quotes 必须逐字来自正文，数量不得超过 maximum_quotes，每条不超过 300 字符并附简短上下文。只返回符合 Schema 的 JSON。",
+  "provider_profile_id": "00000000-0000-0000-0000-000000000100",
+  "input_schema": {
+    "type": "object", "additionalProperties": false,
+    "required": ["metadata", "document", "audience", "maximum_quotes"],
+    "properties": {
+      "metadata": {"type": "object"},
+      "document": {"type": "object", "required": ["text"], "properties": {"text": {"type": "string", "minLength": 1}}},
+      "audience": {"type": "string", "minLength": 1, "maxLength": 500},
+      "maximum_quotes": {"type": "integer", "minimum": 0, "maximum": 5}
+    }
+  },
+  "output_schema": {
+    "type": "object", "additionalProperties": false,
+    "required": ["one_sentence_summary", "summary", "viewpoints", "key_quotes"],
+    "properties": {
+      "one_sentence_summary": {"type": "string", "minLength": 1, "maxLength": 500},
+      "summary": {"type": "string", "minLength": 1, "maxLength": 5000},
+      "viewpoints": {"type": "array", "maxItems": 5, "items": {"type": "object", "additionalProperties": false, "required": ["statement", "explanation"], "properties": {"statement": {"type": "string", "minLength": 1, "maxLength": 500}, "explanation": {"type": "string", "minLength": 1, "maxLength": 2000}}}},
+      "key_quotes": {"type": "array", "maxItems": 5, "items": {"type": "object", "additionalProperties": false, "required": ["text", "context"], "properties": {"text": {"type": "string", "minLength": 1, "maxLength": 300}, "context": {"type": ["string", "null"], "maxLength": 200}}}}
+    }
+  }
+}

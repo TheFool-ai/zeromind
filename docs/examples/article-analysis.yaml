@@ -1,9 +1,6 @@
-name: valuable-article-analysis
+name: bestblogs-six-agent-analysis
 trigger:
-  events:
-    - reference.discovered
-    - reference.updated
-    - manual
+  events: [reference.discovered, reference.updated, manual]
 projection: content_analysis_v1
 nodes:
   - id: reference
@@ -12,102 +9,143 @@ nodes:
       reference_id: $.trigger.reference_id
       revision: $.trigger.revision
 
-  # 替换为注册 screening-agent.json 后返回的 Agent ID。
-  - id: screen
+  - id: screening
     type: agent
     agent_id: 00000000-0000-0000-0000-000000000101
-    depends_on:
-      - reference
+    depends_on: [reference]
     input:
       metadata: $.steps.reference
-      audience: software-builders
+      audience: AI 与软件开发者，关注工程实践、技术原理、开发工具、可复用方法、产品落地和重要行业变化。
+    retry: {max_attempts: 2, backoff_seconds: 2}
 
   - id: initial_gate
     type: gate
-    depends_on:
-      - screen
-    predicate:
-      left: $.steps.screen.score
-      operator: gte
-      right: 30
+    depends_on: [screening]
+    predicate: {left: $.steps.screening.score, operator: gte, right: 30}
     reject:
       output:
         schema_version: 1
         status: initial_rejected
         reference: $.steps.reference
-        screening: $.steps.screen
+        screening: $.steps.screening
 
   - id: resolve
     type: resolve
-    depends_on:
-      - initial_gate
-    input:
-      reference_id: $.trigger.reference_id
+    depends_on: [initial_gate]
+    input: {reference_id: $.trigger.reference_id}
 
-  # 替换为注册 analysis-agent.json 后返回的 Agent ID。
-  - id: analyze
+  - id: core_analysis
     type: agent
     agent_id: 00000000-0000-0000-0000-000000000102
-    depends_on:
-      - resolve
+    depends_on: [resolve]
     input:
       metadata: $.steps.reference
       document: $.steps.resolve
-      audience: software-builders
+      audience: AI 与软件开发者，关注工程实践、技术原理、开发工具、可复用方法、产品落地和重要行业变化。
       maximum_quotes: 5
+    retry: {max_attempts: 2, backoff_seconds: 2}
 
-  - id: quality_score
+  - id: taxonomy
+    type: agent
+    agent_id: 00000000-0000-0000-0000-000000000103
+    depends_on: [core_analysis]
+    input:
+      metadata: $.steps.reference
+      document: $.steps.resolve
+      audience: AI 与软件开发者，关注工程实践、技术原理、开发工具、可复用方法、产品落地和重要行业变化。
+      core_analysis: $.steps.core_analysis
+    retry: {max_attempts: 2, backoff_seconds: 2}
+
+  - id: quality_scoring
+    type: agent
+    agent_id: 00000000-0000-0000-0000-000000000104
+    depends_on: [taxonomy]
+    input:
+      metadata: $.steps.reference
+      document: $.steps.resolve
+      audience: AI 与软件开发者，关注工程实践、技术原理、开发工具、可复用方法、产品落地和重要行业变化。
+      core_analysis: $.steps.core_analysis
+      taxonomy: $.steps.taxonomy
+    retry: {max_attempts: 2, backoff_seconds: 2}
+
+  - id: review
+    type: agent
+    agent_id: 00000000-0000-0000-0000-000000000105
+    depends_on: [quality_scoring]
+    input:
+      metadata: $.steps.reference
+      document: $.steps.resolve
+      audience: AI 与软件开发者，关注工程实践、技术原理、开发工具、可复用方法、产品落地和重要行业变化。
+      core_analysis: $.steps.core_analysis
+      taxonomy: $.steps.taxonomy
+      quality_scoring: $.steps.quality_scoring
+    retry: {max_attempts: 2, backoff_seconds: 2}
+
+  - id: finalize
+    type: agent
+    agent_id: 00000000-0000-0000-0000-000000000106
+    depends_on: [review]
+    input:
+      metadata: $.steps.reference
+      document: $.steps.resolve
+      audience: AI 与软件开发者，关注工程实践、技术原理、开发工具、可复用方法、产品落地和重要行业变化。
+      core_analysis: $.steps.core_analysis
+      taxonomy: $.steps.taxonomy
+      quality_scoring: $.steps.quality_scoring
+      review: $.steps.review
+    retry: {max_attempts: 2, backoff_seconds: 2}
+
+  - id: deterministic_score
     type: score
-    depends_on:
-      - analyze
+    depends_on: [finalize]
     input:
       dimensions:
-        relevance:
-          value: $.steps.analyze.scores.relevance.value
-          reason: $.steps.analyze.scores.relevance.reason
-          weight: 0.20
-        information_value:
-          value: $.steps.analyze.scores.information_value.value
-          reason: $.steps.analyze.scores.information_value.reason
-          weight: 0.25
-        depth:
-          value: $.steps.analyze.scores.depth.value
-          reason: $.steps.analyze.scores.depth.reason
-          weight: 0.20
-        practicality:
-          value: $.steps.analyze.scores.practicality.value
-          reason: $.steps.analyze.scores.practicality.reason
-          weight: 0.15
-        novelty:
-          value: $.steps.analyze.scores.novelty.value
-          reason: $.steps.analyze.scores.novelty.reason
-          weight: 0.10
-        clarity:
-          value: $.steps.analyze.scores.clarity.value
-          reason: $.steps.analyze.scores.clarity.reason
-          weight: 0.10
+        relevance: {value: $.steps.finalize.scores.relevance.value, reason: $.steps.finalize.scores.relevance.reason, weight: 0.20}
+        information_value: {value: $.steps.finalize.scores.information_value.value, reason: $.steps.finalize.scores.information_value.reason, weight: 0.25}
+        depth: {value: $.steps.finalize.scores.depth.value, reason: $.steps.finalize.scores.depth.reason, weight: 0.20}
+        practicality: {value: $.steps.finalize.scores.practicality.value, reason: $.steps.finalize.scores.practicality.reason, weight: 0.15}
+        novelty: {value: $.steps.finalize.scores.novelty.value, reason: $.steps.finalize.scores.novelty.reason, weight: 0.10}
+        clarity: {value: $.steps.finalize.scores.clarity.value, reason: $.steps.finalize.scores.clarity.reason, weight: 0.10}
 
   - id: fine_gate
     type: gate
-    depends_on:
-      - quality_score
-    predicate:
-      left: $.steps.quality_score.total
-      operator: gte
-      right: 70
+    depends_on: [deterministic_score]
+    predicate: {left: $.steps.deterministic_score.total, operator: gte, right: 70}
     reject:
       output:
         schema_version: 1
         status: fine_rejected
         reference: $.steps.reference
-        screening: $.steps.screen
-        content: $.steps.analyze
-        score: $.steps.quality_score
+        screening: $.steps.screening
+        content:
+          primary_category: $.steps.finalize.primary_category
+          secondary_categories: $.steps.finalize.secondary_categories
+          tags: $.steps.finalize.tags
+          one_sentence_summary: $.steps.finalize.one_sentence_summary
+          summary: $.steps.finalize.summary
+          viewpoints: $.steps.finalize.viewpoints
+          key_quotes: $.steps.finalize.key_quotes
+          scores: $.steps.finalize.scores
+          recommendation_level: $.steps.finalize.recommendation_level
+          recommendation_reason: $.steps.finalize.recommendation_reason
+          _execution: $.steps.finalize._execution
+        score: $.steps.deterministic_score
 
 output:
   schema_version: 1
   status: qualified
   reference: $.steps.reference
-  screening: $.steps.screen
-  content: $.steps.analyze
-  score: $.steps.quality_score
+  screening: $.steps.screening
+  content:
+    primary_category: $.steps.finalize.primary_category
+    secondary_categories: $.steps.finalize.secondary_categories
+    tags: $.steps.finalize.tags
+    one_sentence_summary: $.steps.finalize.one_sentence_summary
+    summary: $.steps.finalize.summary
+    viewpoints: $.steps.finalize.viewpoints
+    key_quotes: $.steps.finalize.key_quotes
+    scores: $.steps.finalize.scores
+    recommendation_level: $.steps.finalize.recommendation_level
+    recommendation_reason: $.steps.finalize.recommendation_reason
+    _execution: $.steps.finalize._execution
+  score: $.steps.deterministic_score

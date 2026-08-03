@@ -18,6 +18,8 @@ COPY backend/src ./src
 RUN pip install --no-cache-dir .
 COPY backend/alembic.ini ./
 COPY backend/migrations ./migrations
+COPY backend/scripts ./scripts
+COPY docs/examples /app/docs/examples
 COPY --from=pi-build /usr/local/bin/node /usr/local/bin/node
 COPY --from=pi-build /work/pi-runner/dist /app/pi-runner/dist
 COPY --from=pi-build /work/pi-runner/node_modules /app/pi-runner/node_modules
@@ -26,4 +28,3 @@ RUN mkdir -p /app/backend/data && chown -R zeromind:zeromind /app
 USER zeromind
 EXPOSE 8000
 CMD ["uvicorn", "zeromind.bootstrap.app:app", "--host", "0.0.0.0", "--port", "8000"]
-

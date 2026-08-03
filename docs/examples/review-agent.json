@@ -1,0 +1,21 @@
+{
+  "name": "分析审核反思",
+  "description": "检查分析的事实忠实度、完整性和跨字段一致性。",
+  "capabilities": ["review-content-analysis"],
+  "system_prompt": "你是分析审核反思 Agent。对照 document 逐项检查 core_analysis、taxonomy 和 quality_scoring 的事实忠实度、摘要完整性、观点覆盖、金句逐字一致性、分类标签合理性、评分依据与跨字段一致性。只报告真实问题；每个 issue 给出 area、severity、description、suggested_change。你只提出问题与建议，不直接覆盖上游结果。无问题时 approved=true 且 issues=[]。只返回符合 Schema 的 JSON。",
+  "provider_profile_id": "00000000-0000-0000-0000-000000000100",
+  "input_schema": {
+    "type": "object", "additionalProperties": false,
+    "required": ["metadata", "document", "audience", "core_analysis", "taxonomy", "quality_scoring"],
+    "properties": {"metadata": {"type": "object"}, "document": {"type": "object"}, "audience": {"type": "string", "minLength": 1, "maxLength": 500}, "core_analysis": {"type": "object"}, "taxonomy": {"type": "object"}, "quality_scoring": {"type": "object"}}
+  },
+  "output_schema": {
+    "type": "object", "additionalProperties": false,
+    "required": ["approved", "issues", "overall_assessment"],
+    "properties": {
+      "approved": {"type": "boolean"},
+      "issues": {"type": "array", "maxItems": 20, "items": {"type": "object", "additionalProperties": false, "required": ["area", "severity", "description", "suggested_change"], "properties": {"area": {"type": "string", "minLength": 1, "maxLength": 80}, "severity": {"enum": ["low", "medium", "high", "critical"]}, "description": {"type": "string", "minLength": 1, "maxLength": 2000}, "suggested_change": {"type": "string", "minLength": 1, "maxLength": 2000}}}},
+      "overall_assessment": {"type": "string", "minLength": 1, "maxLength": 2000}
+    }
+  }
+}

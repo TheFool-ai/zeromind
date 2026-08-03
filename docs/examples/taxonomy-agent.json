@@ -1,0 +1,22 @@
+{
+  "name": "领域与标签分析",
+  "description": "按照固定领域体系生成概率、主次分类和规范化标签。",
+  "capabilities": ["classify-content"],
+  "system_prompt": "你是领域与标签分析 Agent。依据 metadata、document、audience 和 core_analysis 分类。五个固定领域为人工智能、软件编程、产品设计、商业科技、其他；概率必须为整数且总和为 100，primary_category 必须是最高概率领域。secondary_categories 只包含有实质关联的非主领域。生成 3 至 10 个规范化且不重复的标签，优先覆盖主题、技术或领域、应用或产品、组织或人物、趋势，避免机械重复标题。只返回符合 Schema 的 JSON。",
+  "provider_profile_id": "00000000-0000-0000-0000-000000000100",
+  "input_schema": {
+    "type": "object", "additionalProperties": false,
+    "required": ["metadata", "document", "audience", "core_analysis"],
+    "properties": {"metadata": {"type": "object"}, "document": {"type": "object"}, "audience": {"type": "string", "minLength": 1, "maxLength": 500}, "core_analysis": {"type": "object"}}
+  },
+  "output_schema": {
+    "type": "object", "additionalProperties": false,
+    "required": ["primary_category", "category_probabilities", "secondary_categories", "tags"],
+    "properties": {
+      "primary_category": {"enum": ["人工智能", "软件编程", "产品设计", "商业科技", "其他"]},
+      "category_probabilities": {"type": "object", "additionalProperties": false, "required": ["人工智能", "软件编程", "产品设计", "商业科技", "其他"], "properties": {"人工智能": {"type": "integer", "minimum": 0, "maximum": 100}, "软件编程": {"type": "integer", "minimum": 0, "maximum": 100}, "产品设计": {"type": "integer", "minimum": 0, "maximum": 100}, "商业科技": {"type": "integer", "minimum": 0, "maximum": 100}, "其他": {"type": "integer", "minimum": 0, "maximum": 100}}},
+      "secondary_categories": {"type": "array", "maxItems": 4, "uniqueItems": true, "items": {"enum": ["人工智能", "软件编程", "产品设计", "商业科技", "其他"]}},
+      "tags": {"type": "array", "minItems": 3, "maxItems": 10, "uniqueItems": true, "items": {"type": "string", "minLength": 1, "maxLength": 80}}
+    }
+  }
+}

@@ -1,0 +1,30 @@
+{
+  "name": "最终分析优化",
+  "description": "综合审核意见生成 content_analysis_v1 所需的最终内容。",
+  "capabilities": ["finalize-content-analysis"],
+  "system_prompt": "你是最终分析优化 Agent。综合 core_analysis、taxonomy、quality_scoring 与 review 生成最终内容。只有审核问题或明确的跨字段不一致支持修改时才调整上游字段，必须在 update_reasons 中按字段说明原因；未修改时返回空对象。金句仍须逐字来自 document，评分不得脱离原文依据。category_probabilities 不属于最终投影，勿输出。只返回符合 Schema 的 JSON。",
+  "provider_profile_id": "00000000-0000-0000-0000-000000000100",
+  "input_schema": {
+    "type": "object", "additionalProperties": false,
+    "required": ["metadata", "document", "audience", "core_analysis", "taxonomy", "quality_scoring", "review"],
+    "properties": {"metadata": {"type": "object"}, "document": {"type": "object"}, "audience": {"type": "string", "minLength": 1, "maxLength": 500}, "core_analysis": {"type": "object"}, "taxonomy": {"type": "object"}, "quality_scoring": {"type": "object"}, "review": {"type": "object"}}
+  },
+  "output_schema": {
+    "type": "object", "additionalProperties": false,
+    "required": ["primary_category", "secondary_categories", "tags", "one_sentence_summary", "summary", "viewpoints", "key_quotes", "scores", "recommendation_level", "recommendation_reason", "update_reasons"],
+    "properties": {
+      "primary_category": {"enum": ["人工智能", "软件编程", "产品设计", "商业科技", "其他"]},
+      "secondary_categories": {"type": "array", "maxItems": 4, "uniqueItems": true, "items": {"enum": ["人工智能", "软件编程", "产品设计", "商业科技", "其他"]}},
+      "tags": {"type": "array", "minItems": 3, "maxItems": 10, "uniqueItems": true, "items": {"type": "string", "minLength": 1, "maxLength": 80}},
+      "one_sentence_summary": {"type": "string", "minLength": 1, "maxLength": 500},
+      "summary": {"type": "string", "minLength": 1, "maxLength": 5000},
+      "viewpoints": {"type": "array", "maxItems": 10, "items": {"type": "object", "additionalProperties": false, "required": ["statement", "explanation"], "properties": {"statement": {"type": "string", "minLength": 1, "maxLength": 500}, "explanation": {"type": "string", "minLength": 1, "maxLength": 2000}}}},
+      "key_quotes": {"type": "array", "maxItems": 5, "items": {"type": "object", "additionalProperties": false, "required": ["text", "context"], "properties": {"text": {"type": "string", "minLength": 1, "maxLength": 300}, "context": {"type": ["string", "null"], "maxLength": 200}}}},
+      "scores": {"type": "object", "additionalProperties": false, "required": ["relevance", "information_value", "depth", "practicality", "novelty", "clarity"], "properties": {"relevance": {"$ref": "#/$defs/score"}, "information_value": {"$ref": "#/$defs/score"}, "depth": {"$ref": "#/$defs/score"}, "practicality": {"$ref": "#/$defs/score"}, "novelty": {"$ref": "#/$defs/score"}, "clarity": {"$ref": "#/$defs/score"}}},
+      "recommendation_level": {"type": "string", "minLength": 1, "maxLength": 80},
+      "recommendation_reason": {"type": "string", "minLength": 1, "maxLength": 2000},
+      "update_reasons": {"type": "object", "additionalProperties": {"type": "string", "minLength": 1, "maxLength": 1000}}
+    },
+    "$defs": {"score": {"type": "object", "additionalProperties": false, "required": ["value", "reason"], "properties": {"value": {"type": "integer", "minimum": 0, "maximum": 100}, "reason": {"type": "string", "minLength": 1, "maxLength": 2000}}}}
+  }
+}
