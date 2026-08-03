@@ -62,6 +62,23 @@ class ProviderProfile:
 
 
 @dataclass(slots=True)
+class AgentVersion:
+    id: uuid.UUID
+    agent_id: uuid.UUID
+    version: int
+    capabilities: tuple[str, ...]
+    system_prompt: str
+    provider_profile_id: uuid.UUID
+    input_schema: dict[str, object]
+    output_schema: dict[str, object]
+    created_at: datetime
+
+
+def _capabilities(values: tuple[str, ...]) -> tuple[str, ...]:
+    return tuple(sorted({value.strip().lower() for value in values if value.strip()}))
+
+
+@dataclass(slots=True)
 class AgentDefinition:
     id: uuid.UUID
     name: str
@@ -73,6 +90,7 @@ class AgentDefinition:
     output_schema: dict[str, object]
     enabled: bool
     version: int
+    version_id: uuid.UUID
     created_at: datetime
     updated_at: datetime
 
@@ -93,22 +111,34 @@ class AgentDefinition:
         current = now or datetime.now(UTC)
         if not name.strip() or not system_prompt.strip():
             raise ValueError("agent name and system prompt are required")
-        normalized_capabilities = tuple(
-            sorted({value.strip().lower() for value in capabilities if value.strip()})
-        )
+        agent_id = identifier or uuid.uuid4()
         return cls(
-            id=identifier or uuid.uuid4(),
+            id=agent_id,
             name=name.strip(),
             description=description.strip(),
-            capabilities=normalized_capabilities,
+            capabilities=_capabilities(capabilities),
             system_prompt=system_prompt.strip(),
             provider_profile_id=provider_profile_id,
             input_schema=dict(input_schema),
             output_schema=dict(output_schema),
             enabled=True,
             version=1,
+            version_id=uuid.uuid4(),
             created_at=current,
             updated_at=current,
+        )
+
+    def current_version(self) -> AgentVersion:
+        return AgentVersion(
+            id=self.version_id,
+            agent_id=self.id,
+            version=self.version,
+            capabilities=self.capabilities,
+            system_prompt=self.system_prompt,
+            provider_profile_id=self.provider_profile_id,
+            input_schema=dict(self.input_schema),
+            output_schema=dict(self.output_schema),
+            created_at=self.updated_at,
         )
 
     def disable(self, *, now: datetime | None = None) -> None:
@@ -124,14 +154,20 @@ class AgentDefinition:
         *,
         system_prompt: str,
         capabilities: tuple[str, ...],
+        provider_profile_id: uuid.UUID,
+        input_schema: dict[str, object],
+        output_schema: dict[str, object],
         now: datetime | None = None,
-    ) -> None:
+    ) -> AgentVersion:
         if not system_prompt.strip():
             raise ValueError("system prompt is required")
+        current = now or datetime.now(UTC)
         self.system_prompt = system_prompt.strip()
-        self.capabilities = tuple(
-            sorted({value.strip().lower() for value in capabilities if value.strip()})
-        )
+        self.capabilities = _capabilities(capabilities)
+        self.provider_profile_id = provider_profile_id
+        self.input_schema = dict(input_schema)
+        self.output_schema = dict(output_schema)
         self.version += 1
-        self.updated_at = now or datetime.now(UTC)
-
+        self.version_id = uuid.uuid4()
+        self.updated_at = current
+        return self.current_version()

@@ -6,8 +6,12 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from zeromind.agents.domain import AgentDefinition, ProviderProfile
-from zeromind.agents.models import AgentDefinitionModel, ProviderProfileModel
+from zeromind.agents.domain import AgentDefinition, AgentVersion, ProviderProfile
+from zeromind.agents.models import (
+    AgentDefinitionModel,
+    AgentVersionModel,
+    ProviderProfileModel,
+)
 
 
 class DuplicateAgentError(ValueError):
@@ -27,7 +31,19 @@ class AgentRepository(Protocol):
 
     async def list_agents(self) -> tuple[AgentDefinition, ...]: ...
 
-    async def save_agent(self, definition: AgentDefinition) -> None: ...
+    async def append_agent_version(
+        self, definition: AgentDefinition, version: AgentVersion
+    ) -> None: ...
+
+    async def save_agent_state(self, definition: AgentDefinition) -> None: ...
+
+    async def get_agent_version(
+        self, agent_id: uuid.UUID, version: int
+    ) -> AgentVersion | None: ...
+
+    async def list_agent_versions(
+        self, agent_id: uuid.UUID
+    ) -> tuple[AgentVersion, ...]: ...
 
 
 class InMemoryAgentRepository:
@@ -36,6 +52,7 @@ class InMemoryAgentRepository:
         self._provider_names: set[str] = set()
         self._agents: dict[uuid.UUID, AgentDefinition] = {}
         self._agent_names: set[str] = set()
+        self._versions: dict[uuid.UUID, dict[int, AgentVersion]] = {}
 
     async def add_provider(self, profile: ProviderProfile) -> None:
         if profile.name in self._provider_names:
@@ -54,6 +71,7 @@ class InMemoryAgentRepository:
             raise DuplicateAgentError(definition.name)
         self._agents[definition.id] = definition
         self._agent_names.add(definition.name)
+        self._versions[definition.id] = {1: definition.current_version()}
 
     async def get_agent(self, agent_id: uuid.UUID) -> AgentDefinition | None:
         return self._agents.get(agent_id)
@@ -61,10 +79,34 @@ class InMemoryAgentRepository:
     async def list_agents(self) -> tuple[AgentDefinition, ...]:
         return tuple(sorted(self._agents.values(), key=lambda item: item.name))
 
-    async def save_agent(self, definition: AgentDefinition) -> None:
+    async def append_agent_version(
+        self, definition: AgentDefinition, version: AgentVersion
+    ) -> None:
+        versions = self._versions.get(definition.id)
+        if versions is None:
+            raise KeyError(definition.id)
+        if version.version in versions:
+            raise ValueError("agent version already exists")
+        versions[version.version] = version
+        self._agents[definition.id] = definition
+
+    async def save_agent_state(self, definition: AgentDefinition) -> None:
         if definition.id not in self._agents:
             raise KeyError(definition.id)
         self._agents[definition.id] = definition
+
+    async def get_agent_version(
+        self, agent_id: uuid.UUID, version: int
+    ) -> AgentVersion | None:
+        return self._versions.get(agent_id, {}).get(version)
+
+    async def list_agent_versions(
+        self, agent_id: uuid.UUID
+    ) -> tuple[AgentVersion, ...]:
+        return tuple(
+            item
+            for _, item in sorted(self._versions.get(agent_id, {}).items())
+        )
 
 
 class AgentRegistry:
@@ -97,19 +139,45 @@ class AgentRegistry:
     async def list_agents(self) -> tuple[AgentDefinition, ...]:
         return await self._repository.list_agents()
 
+    async def get_agent_version(
+        self, agent_id: uuid.UUID, version: int
+    ) -> AgentVersion:
+        value = await self._repository.get_agent_version(agent_id, version)
+        if value is None:
+            raise KeyError((agent_id, version))
+        return value
+
+    async def list_agent_versions(
+        self, agent_id: uuid.UUID
+    ) -> tuple[AgentVersion, ...]:
+        if await self._repository.get_agent(agent_id) is None:
+            raise KeyError(agent_id)
+        return await self._repository.list_agent_versions(agent_id)
+
     async def update_agent(
         self,
         agent_id: uuid.UUID,
         *,
         system_prompt: str,
         capabilities: tuple[str, ...],
+        provider_profile_id: uuid.UUID | None = None,
+        input_schema: dict[str, object] | None = None,
+        output_schema: dict[str, object] | None = None,
     ) -> AgentDefinition:
         definition = await self.get_agent(agent_id)
-        definition.update(
+        target_provider_id = provider_profile_id or definition.provider_profile_id
+        if await self._repository.get_provider(target_provider_id) is None:
+            raise ValueError("provider profile does not exist")
+        version = definition.update(
             system_prompt=system_prompt,
             capabilities=capabilities,
+            provider_profile_id=target_provider_id,
+            input_schema=(definition.input_schema if input_schema is None else input_schema),
+            output_schema=(
+                definition.output_schema if output_schema is None else output_schema
+            ),
         )
-        await self._repository.save_agent(definition)
+        await self._repository.append_agent_version(definition, version)
         return definition
 
     async def set_agent_enabled(
@@ -123,7 +191,7 @@ class AgentRegistry:
             definition.enable()
         else:
             definition.disable()
-        await self._repository.save_agent(definition)
+        await self._repository.save_agent_state(definition)
         return definition
 
     async def discover(
@@ -158,18 +226,33 @@ def _provider_domain(model: ProviderProfileModel) -> ProviderProfile:
     )
 
 
-def _agent_domain(model: AgentDefinitionModel) -> AgentDefinition:
-    return AgentDefinition(
+def _version_domain(model: AgentVersionModel) -> AgentVersion:
+    return AgentVersion(
         id=model.id,
-        name=model.name,
-        description=model.description,
+        agent_id=model.agent_id,
+        version=model.version,
         capabilities=tuple(model.capabilities),
         system_prompt=model.system_prompt,
         provider_profile_id=model.provider_profile_id,
         input_schema=model.input_schema,
         output_schema=model.output_schema,
+        created_at=_as_utc(model.created_at),
+    )
+
+
+def _agent_domain(model: AgentDefinitionModel, version: AgentVersionModel) -> AgentDefinition:
+    return AgentDefinition(
+        id=model.id,
+        name=model.name,
+        description=model.description,
+        capabilities=tuple(version.capabilities),
+        system_prompt=version.system_prompt,
+        provider_profile_id=version.provider_profile_id,
+        input_schema=version.input_schema,
+        output_schema=version.output_schema,
         enabled=model.enabled,
-        version=model.version,
+        version=version.version,
+        version_id=version.id,
         created_at=_as_utc(model.created_at),
         updated_at=_as_utc(model.updated_at),
     )
@@ -219,17 +302,13 @@ class SqlAlchemyAgentRepository:
                     id=definition.id,
                     name=definition.name,
                     description=definition.description,
-                    capabilities=list(definition.capabilities),
-                    system_prompt=definition.system_prompt,
-                    provider_profile_id=definition.provider_profile_id,
-                    input_schema=definition.input_schema,
-                    output_schema=definition.output_schema,
                     enabled=definition.enabled,
-                    version=definition.version,
+                    current_version=definition.version,
                     created_at=definition.created_at,
                     updated_at=definition.updated_at,
                 )
             )
+            session.add(self._version_model(definition.current_version()))
             try:
                 await session.flush()
             except IntegrityError as error:
@@ -238,27 +317,96 @@ class SqlAlchemyAgentRepository:
     async def get_agent(self, agent_id: uuid.UUID) -> AgentDefinition | None:
         async with self._sessions() as session:
             model = await session.get(AgentDefinitionModel, agent_id)
-            return _agent_domain(model) if model else None
+            if model is None:
+                return None
+            version = await self._current_version_model(session, model)
+            return _agent_domain(model, version)
 
     async def list_agents(self) -> tuple[AgentDefinition, ...]:
         async with self._sessions() as session:
             models = await session.scalars(
                 select(AgentDefinitionModel).order_by(AgentDefinitionModel.name)
             )
-            return tuple(_agent_domain(model) for model in models)
+            result: list[AgentDefinition] = []
+            for model in models:
+                result.append(
+                    _agent_domain(
+                        model,
+                        await self._current_version_model(session, model),
+                    )
+                )
+            return tuple(result)
 
-    async def save_agent(self, definition: AgentDefinition) -> None:
+    async def append_agent_version(
+        self, definition: AgentDefinition, version: AgentVersion
+    ) -> None:
         async with self._sessions() as session, session.begin():
             model = await session.get(AgentDefinitionModel, definition.id)
             if model is None:
                 raise KeyError(definition.id)
-            model.name = definition.name
-            model.description = definition.description
-            model.capabilities = list(definition.capabilities)
-            model.system_prompt = definition.system_prompt
-            model.provider_profile_id = definition.provider_profile_id
-            model.input_schema = definition.input_schema
-            model.output_schema = definition.output_schema
-            model.enabled = definition.enabled
-            model.version = definition.version
+            session.add(self._version_model(version))
+            model.current_version = version.version
             model.updated_at = definition.updated_at
+            try:
+                await session.flush()
+            except IntegrityError as error:
+                raise ValueError("agent version already exists") from error
+
+    async def save_agent_state(self, definition: AgentDefinition) -> None:
+        async with self._sessions() as session, session.begin():
+            model = await session.get(AgentDefinitionModel, definition.id)
+            if model is None:
+                raise KeyError(definition.id)
+            model.enabled = definition.enabled
+            model.updated_at = definition.updated_at
+
+    async def get_agent_version(
+        self, agent_id: uuid.UUID, version: int
+    ) -> AgentVersion | None:
+        async with self._sessions() as session:
+            model = await session.scalar(
+                select(AgentVersionModel).where(
+                    AgentVersionModel.agent_id == agent_id,
+                    AgentVersionModel.version == version,
+                )
+            )
+            return _version_domain(model) if model else None
+
+    async def list_agent_versions(
+        self, agent_id: uuid.UUID
+    ) -> tuple[AgentVersion, ...]:
+        async with self._sessions() as session:
+            models = await session.scalars(
+                select(AgentVersionModel)
+                .where(AgentVersionModel.agent_id == agent_id)
+                .order_by(AgentVersionModel.version)
+            )
+            return tuple(_version_domain(model) for model in models)
+
+    @staticmethod
+    def _version_model(version: AgentVersion) -> AgentVersionModel:
+        return AgentVersionModel(
+            id=version.id,
+            agent_id=version.agent_id,
+            version=version.version,
+            capabilities=list(version.capabilities),
+            system_prompt=version.system_prompt,
+            provider_profile_id=version.provider_profile_id,
+            input_schema=version.input_schema,
+            output_schema=version.output_schema,
+            created_at=version.created_at,
+        )
+
+    @staticmethod
+    async def _current_version_model(
+        session: AsyncSession, model: AgentDefinitionModel
+    ) -> AgentVersionModel:
+        version = await session.scalar(
+            select(AgentVersionModel).where(
+                AgentVersionModel.agent_id == model.id,
+                AgentVersionModel.version == model.current_version,
+            )
+        )
+        if version is None:
+            raise RuntimeError("agent current version is missing")
+        return version

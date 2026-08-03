@@ -6,7 +6,11 @@ import pytest_asyncio
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from zeromind.agents.domain import AgentDefinition, ProviderProfile
-from zeromind.agents.models import AgentDefinitionModel, ProviderProfileModel
+from zeromind.agents.models import (
+    AgentDefinitionModel,
+    AgentVersionModel,
+    ProviderProfileModel,
+)
 from zeromind.agents.registry import AgentRegistry, SqlAlchemyAgentRepository
 
 
@@ -16,6 +20,7 @@ async def sessions() -> AsyncIterator[async_sessionmaker[AsyncSession]]:
     async with engine.begin() as connection:
         await connection.run_sync(ProviderProfileModel.__table__.create)
         await connection.run_sync(AgentDefinitionModel.__table__.create)
+        await connection.run_sync(AgentVersionModel.__table__.create)
     yield async_sessionmaker(engine, expire_on_commit=False)
     await engine.dispose()
 
@@ -49,3 +54,18 @@ async def test_sql_repository_supports_registration_and_discovery(
 
     assert [item.name for item in discovered] == ["summarizer"]
     assert (await registry.get_provider(profile.id)).api_key_env == "OPENAI_API_KEY"
+
+    definition = discovered[0]
+    await registry.update_agent(
+        definition.id,
+        system_prompt="Return concise JSON.",
+        capabilities=("summarize",),
+        provider_profile_id=profile.id,
+        input_schema={"type": "object"},
+        output_schema={"type": "object", "additionalProperties": False},
+    )
+
+    versions = await registry.list_agent_versions(definition.id)
+    assert [item.version for item in versions] == [1, 2]
+    assert versions[0].system_prompt == "Return JSON."
+    assert versions[1].output_schema["additionalProperties"] is False
