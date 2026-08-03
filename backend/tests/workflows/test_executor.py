@@ -12,7 +12,7 @@ from zeromind.ingestion.service import IngestionService
 from zeromind.shared.config import Settings
 from zeromind.workflows.domain import WorkflowDefinition
 from zeromind.workflows.dsl import parse_workflow_yaml
-from zeromind.workflows.executor import WorkflowExecutor
+from zeromind.workflows.executor import NodeExecutionContext, WorkflowExecutor
 from zeromind.workflows.repository import InMemoryWorkflowRepository
 
 Handler = Callable[[dict[str, object]], Awaitable[dict[str, object]]]
@@ -104,12 +104,16 @@ async def test_executor_resolves_mappings_dependencies_and_output() -> None:
     await repository.add_definition(definition)
     calls: list[str] = []
 
-    async def resolve(input: dict[str, object]) -> dict[str, object]:
+    async def resolve(
+        input: dict[str, object], _: NodeExecutionContext
+    ) -> dict[str, object]:
         calls.append("resolve")
         assert input["reference_id"] == "ref-1"
         return {"title": "Article"}
 
-    async def agent(input: dict[str, object]) -> dict[str, object]:
+    async def agent(
+        input: dict[str, object], _: NodeExecutionContext
+    ) -> dict[str, object]:
         calls.append("agent")
         return (
             {"summary": f"Summary of {input['title']}"}
@@ -117,7 +121,9 @@ async def test_executor_resolves_mappings_dependencies_and_output() -> None:
             else {"category": "technology"}
         )
 
-    async def parallel(input: dict[str, object]) -> dict[str, object]:
+    async def parallel(
+        input: dict[str, object], _: NodeExecutionContext
+    ) -> dict[str, object]:
         calls.append("parallel")
         return input
 
@@ -142,6 +148,52 @@ async def test_executor_resolves_mappings_dependencies_and_output() -> None:
 
 
 @pytest.mark.asyncio
+async def test_executor_persists_step_before_passing_execution_context() -> None:
+    repository = InMemoryWorkflowRepository()
+    definition = WorkflowDefinition.create(
+        parse_workflow_yaml(
+            """
+name: contextual-agent
+trigger: {events: [manual]}
+nodes:
+  - id: analyze
+    type: agent
+    agent_id: 44444444-4444-4444-4444-444444444444
+    retry: {max_attempts: 2, backoff_seconds: 0}
+output: {ok: $.steps.analyze.ok}
+"""
+        )
+    )
+    await repository.add_definition(definition)
+    contexts: list[NodeExecutionContext] = []
+
+    async def agent(
+        _: dict[str, object], context: NodeExecutionContext
+    ) -> dict[str, object]:
+        persisted = await repository.get_run(context.workflow_run_id)
+        assert persisted is not None
+        assert [step.id for step in persisted.steps] == [context.step_run_id]
+        assert persisted.steps[0].attempts == context.attempt
+        contexts.append(context)
+        if context.attempt == 1:
+            raise RuntimeError("retry")
+        return {"ok": True}
+
+    run = await WorkflowExecutor(repository, handlers={"agent": agent}).execute(
+        definition.id,
+        trigger={"event": "manual"},
+        idempotency_key="manual:context",
+    )
+
+    assert [context.attempt for context in contexts] == [1, 2]
+    assert all(context.workflow_run_id == run.id for context in contexts)
+    assert contexts[0].step_run_id == contexts[1].step_run_id
+    assert contexts[0].agent_id == UUID(
+        "44444444-4444-4444-4444-444444444444"
+    )
+
+
+@pytest.mark.asyncio
 async def test_executor_returns_existing_run_for_same_idempotency_key() -> None:
     repository = InMemoryWorkflowRepository()
     definition = WorkflowDefinition.create(
@@ -158,7 +210,9 @@ output: {value: $.steps.node.value}
     await repository.add_definition(definition)
     executions = 0
 
-    async def handler(_: dict[str, object]) -> dict[str, object]:
+    async def handler(
+        _: dict[str, object], __: NodeExecutionContext
+    ) -> dict[str, object]:
         nonlocal executions
         executions += 1
         return {"value": executions}
@@ -202,14 +256,18 @@ output: {analysis: $.steps.analyze}
     )
     await repository.add_definition(definition)
 
-    async def resolve(_: dict[str, object]) -> dict[str, object]:
+    async def resolve(
+        _: dict[str, object], __: NodeExecutionContext
+    ) -> dict[str, object]:
         return {
             "_transient_document": True,
             "title": "Safe metadata",
             "text": "ARTICLE BODY MUST NOT BE STORED",
         }
 
-    async def analyze(input: dict[str, object]) -> dict[str, object]:
+    async def analyze(
+        input: dict[str, object], _: NodeExecutionContext
+    ) -> dict[str, object]:
         assert "ARTICLE BODY" in str(input)
         return {"summary": "Structured result"}
 
@@ -258,11 +316,15 @@ output: {status: qualified}
     await repository.add_definition(definition)
     calls: list[str] = []
 
-    async def prepare(_: dict[str, object]) -> dict[str, object]:
+    async def prepare(
+        _: dict[str, object], __: NodeExecutionContext
+    ) -> dict[str, object]:
         calls.append("prepare")
         return {"score": 20}
 
-    async def expensive(_: dict[str, object]) -> dict[str, object]:
+    async def expensive(
+        _: dict[str, object], __: NodeExecutionContext
+    ) -> dict[str, object]:
         calls.append("expensive")
         return {"completed": True}
 
@@ -313,7 +375,9 @@ output:
     await repository.add_definition(definition)
     calls: list[str] = []
 
-    async def handler(input: dict[str, object]) -> dict[str, object]:
+    async def handler(
+        input: dict[str, object], _: NodeExecutionContext
+    ) -> dict[str, object]:
         if not calls:
             calls.append("prepare")
             return {"score": 90}
@@ -364,7 +428,9 @@ output: {status: qualified}
     )
     await repository.add_definition(definition)
 
-    async def prepare(_: dict[str, object]) -> dict[str, object]:
+    async def prepare(
+        _: dict[str, object], __: NodeExecutionContext
+    ) -> dict[str, object]:
         return {
             "_transient_document": True,
             "title": "Safe metadata",
@@ -410,7 +476,9 @@ output: {status: qualified}
     )
     await repository.add_definition(definition)
 
-    async def prepare(_: dict[str, object]) -> dict[str, object]:
+    async def prepare(
+        _: dict[str, object], __: NodeExecutionContext
+    ) -> dict[str, object]:
         return {
             "_transient_document": True,
             "title": "Safe metadata",

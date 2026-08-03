@@ -19,6 +19,7 @@ celery_app.conf.update(
         "zeromind.schedule_due_feeds": {"queue": "scheduler"},
         "zeromind.poll_feed": {"queue": "feeds"},
         "zeromind.dispatch_outbox": {"queue": "events"},
+        "zeromind.recover_stale_agent_sessions": {"queue": "events"},
     },
     beat_schedule={
         "schedule-due-feeds-every-30-minutes": {
@@ -29,6 +30,9 @@ celery_app.conf.update(
             "task": "zeromind.dispatch_outbox",
             "schedule": 60.0,
         },
+        "recover-stale-agent-sessions-every-five-minutes": {
+            "task": "zeromind.recover_stale_agent_sessions",
+            "schedule": 300.0,
+        },
     },
 )
-

@@ -2,11 +2,11 @@ import uuid
 from datetime import UTC, datetime
 from typing import Protocol
 
-from sqlalchemy import delete, select
+from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from zeromind.workflows.domain import WorkflowDefinition, WorkflowRun
+from zeromind.workflows.domain import StepRun, WorkflowDefinition, WorkflowRun
 from zeromind.workflows.dsl import WorkflowSpec
 from zeromind.workflows.models import (
     StepRunModel,
@@ -36,6 +36,10 @@ class WorkflowRepository(Protocol):
     async def add_run(self, run: WorkflowRun) -> None: ...
 
     async def save_run(self, run: WorkflowRun) -> None: ...
+
+    async def add_step(self, step: StepRun) -> None: ...
+
+    async def save_step(self, step: StepRun) -> None: ...
 
     async def get_run(self, run_id: uuid.UUID) -> WorkflowRun | None: ...
 
@@ -86,6 +90,27 @@ class InMemoryWorkflowRepository:
         if run.id not in self._runs:
             raise KeyError(run.id)
         self._runs[run.id] = run
+
+    async def add_step(self, step: StepRun) -> None:
+        run = self._runs.get(step.run_id)
+        if run is None:
+            raise KeyError(step.run_id)
+        for existing in run.steps:
+            if existing.id == step.id:
+                if existing is step:
+                    return
+                raise ValueError("duplicate workflow step")
+        run.steps.append(step)
+
+    async def save_step(self, step: StepRun) -> None:
+        run = self._runs.get(step.run_id)
+        if run is None:
+            raise KeyError(step.run_id)
+        for index, existing in enumerate(run.steps):
+            if existing.id == step.id:
+                run.steps[index] = step
+                return
+        raise KeyError(step.id)
 
     async def get_run(self, run_id: uuid.UUID) -> WorkflowRun | None:
         return self._runs.get(run_id)
@@ -191,27 +216,21 @@ class SqlAlchemyWorkflowRepository:
             model.output = run.output
             model.error = run.error
             model.completed_at = run.completed_at
-            await session.execute(
-                delete(StepRunModel).where(StepRunModel.run_id == run.id)
-            )
-            await session.flush()
-            session.add_all(
-                [
-                    StepRunModel(
-                        id=step.id,
-                        run_id=step.run_id,
-                        node_id=step.node_id,
-                        status=step.status,
-                        attempts=step.attempts,
-                        input=step.input,
-                        output=step.output,
-                        error=step.error,
-                        started_at=step.started_at,
-                        completed_at=step.completed_at,
-                    )
-                    for step in run.steps
-                ]
-            )
+
+    async def add_step(self, step: StepRun) -> None:
+        async with self._sessions() as session, session.begin():
+            session.add(self._step_model(step))
+
+    async def save_step(self, step: StepRun) -> None:
+        async with self._sessions() as session, session.begin():
+            model = await session.get(StepRunModel, step.id)
+            if model is None:
+                raise KeyError(step.id)
+            model.status = step.status
+            model.attempts = step.attempts
+            model.output = step.output
+            model.error = step.error
+            model.completed_at = step.completed_at
 
     async def get_run(self, run_id: uuid.UUID) -> WorkflowRun | None:
         async with self._sessions() as session:
@@ -245,6 +264,21 @@ class SqlAlchemyWorkflowRepository:
         )
 
     @staticmethod
+    def _step_model(step: StepRun) -> StepRunModel:
+        return StepRunModel(
+            id=step.id,
+            run_id=step.run_id,
+            node_id=step.node_id,
+            status=step.status,
+            attempts=step.attempts,
+            input=step.input,
+            output=step.output,
+            error=step.error,
+            started_at=step.started_at,
+            completed_at=step.completed_at,
+        )
+
+    @staticmethod
     async def _run_domain(
         session: AsyncSession,
         model: WorkflowRunModel,
@@ -254,8 +288,6 @@ class SqlAlchemyWorkflowRepository:
             .where(StepRunModel.run_id == model.id)
             .order_by(StepRunModel.started_at)
         )
-        from zeromind.workflows.domain import StepRun
-
         return WorkflowRun(
             id=model.id,
             definition_id=model.definition_id,

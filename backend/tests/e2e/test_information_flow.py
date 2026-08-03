@@ -29,7 +29,7 @@ from zeromind.subscriptions.repository import InMemorySubscriptionRepository
 from zeromind.subscriptions.service import SubscriptionService
 from zeromind.workflows.domain import WorkflowDefinition
 from zeromind.workflows.dsl import parse_workflow_yaml, validate_workflow
-from zeromind.workflows.executor import WorkflowExecutor
+from zeromind.workflows.executor import NodeExecutionContext, WorkflowExecutor
 from zeromind.workflows.primitives import calculate_weighted_score
 from zeromind.workflows.repository import InMemoryWorkflowRepository
 from zeromind.workflows.service import WorkflowRunService
@@ -453,7 +453,9 @@ and structured analysis without retaining the original document.</p>
         transport=httpx.MockTransport(source_server),
     )
 
-    async def reference_node(input: dict[str, object]) -> dict[str, object]:
+    async def reference_node(
+        input: dict[str, object], _: NodeExecutionContext
+    ) -> dict[str, object]:
         identifier = UUID(str(input["reference_id"]))
         reference = await references.get_reference(identifier)
         assert reference is not None
@@ -482,7 +484,9 @@ and structured analysis without retaining the original document.</p>
             "observed_at": revision.observed_at.isoformat(),
         }
 
-    async def resolve_node(input: dict[str, object]) -> dict[str, object]:
+    async def resolve_node(
+        input: dict[str, object], _: NodeExecutionContext
+    ) -> dict[str, object]:
         reference = await references.get_reference(
             UUID(str(input["reference_id"]))
         )
@@ -491,9 +495,11 @@ and structured analysis without retaining the original document.</p>
         assert ARTICLE_MARKER in document["text"]
         return {"_transient_document": True, **document}
 
-    async def agent_node(input: dict[str, object]) -> dict[str, object]:
-        agent_id = UUID(str(input.pop("_agent_id")))
-        result = await gateway.execute(agent_id, input)
+    async def agent_node(
+        input: dict[str, object], context: NodeExecutionContext
+    ) -> dict[str, object]:
+        assert context.agent_id is not None
+        result = await gateway.execute(context.agent_id, input)
         return {
             **result.output,
             "_execution": {
@@ -505,7 +511,9 @@ and structured analysis without retaining the original document.</p>
             },
         }
 
-    async def score_node(input: dict[str, object]) -> dict[str, object]:
+    async def score_node(
+        input: dict[str, object], _: NodeExecutionContext
+    ) -> dict[str, object]:
         raw = input["dimensions"]
         assert isinstance(raw, dict)
         return calculate_weighted_score(raw)

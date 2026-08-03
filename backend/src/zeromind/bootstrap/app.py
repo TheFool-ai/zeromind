@@ -12,6 +12,11 @@ from zeromind.agents.registry import (
     InMemoryAgentRepository,
     SqlAlchemyAgentRepository,
 )
+from zeromind.agents.session_repository import (
+    AgentSessionRepository,
+    InMemoryAgentSessionRepository,
+    SqlAlchemyAgentSessionRepository,
+)
 from zeromind.analysis.api import create_analysis_router
 from zeromind.analysis.projector import AnalysisProjector
 from zeromind.analysis.repository import (
@@ -91,6 +96,7 @@ def create_app(
     database: Database | None = None,
     reference_repository: ReferenceRepository | None = None,
     agent_registry: AgentRegistry | None = None,
+    agent_session_repository: AgentSessionRepository | None = None,
     workflow_repository: WorkflowRepository | None = None,
     analysis_repository: AnalysisRepository | None = None,
     note_repository: NoteRepository | None = None,
@@ -183,6 +189,11 @@ def create_app(
             else InMemoryAgentRepository()
         )
     app.include_router(create_agent_router(agent_registry))
+    resolved_agent_sessions = agent_session_repository or (
+        SqlAlchemyAgentSessionRepository(resolved_database.sessions)
+        if resolved_database is not None
+        else InMemoryAgentSessionRepository()
+    )
     if workflow_repository is None:
         workflow_repository = (
             SqlAlchemyWorkflowRepository(resolved_database.sessions)
@@ -211,6 +222,7 @@ def create_app(
             workflow_repository=workflow_repository,
             reference_repository=reference_repository,
             agent_registry=agent_registry,
+            agent_session_repository=resolved_agent_sessions,
             settings=get_settings(),
         )
         workflow_run_service = WorkflowRunService(

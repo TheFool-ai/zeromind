@@ -13,7 +13,7 @@ from zeromind.ingestion.service import IngestionService
 from zeromind.subscriptions.domain import Subscription
 from zeromind.subscriptions.repository import InMemorySubscriptionRepository
 from zeromind.subscriptions.service import SubscriptionService
-from zeromind.workflows.executor import WorkflowExecutor
+from zeromind.workflows.executor import NodeExecutionContext, WorkflowExecutor
 from zeromind.workflows.repository import InMemoryWorkflowRepository
 from zeromind.workflows.service import WorkflowRunService
 
@@ -33,7 +33,9 @@ output:
 def make_client() -> TestClient:
     repository = InMemoryWorkflowRepository()
 
-    async def copy_handler(value: dict[str, object]) -> dict[str, object]:
+    async def copy_handler(
+        value: dict[str, object], _: NodeExecutionContext
+    ) -> dict[str, object]:
         return value
 
     executor = WorkflowExecutor(

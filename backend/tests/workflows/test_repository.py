@@ -72,6 +72,7 @@ output: {}
         ],
     )
     await repository.add_run(run)
+    await repository.add_step(run.steps.pop())
     await repository.save_run(run)
 
     restored = await repository.find_run(definition.id, "manual:stored")

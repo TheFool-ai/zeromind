@@ -12,7 +12,7 @@ from zeromind.subscriptions.domain import Subscription
 from zeromind.subscriptions.repository import InMemorySubscriptionRepository
 from zeromind.workflows.domain import WorkflowDefinition
 from zeromind.workflows.dsl import WorkflowSpec
-from zeromind.workflows.executor import WorkflowExecutor
+from zeromind.workflows.executor import NodeExecutionContext, WorkflowExecutor
 from zeromind.workflows.repository import InMemoryWorkflowRepository
 from zeromind.workflows.service import WorkflowRunService
 
@@ -104,7 +104,9 @@ async def build_service(
     workflows = InMemoryWorkflowRepository()
     await workflows.add_definition(definition)
 
-    async def noop(_: dict[str, object]) -> dict[str, object]:
+    async def noop(
+        _: dict[str, object], __: NodeExecutionContext
+    ) -> dict[str, object]:
         return {}
 
     executor = WorkflowExecutor(workflows, handlers={"parallel": noop})

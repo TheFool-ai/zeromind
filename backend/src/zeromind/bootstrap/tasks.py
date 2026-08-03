@@ -3,6 +3,7 @@ import uuid
 from datetime import UTC, datetime, timedelta
 
 from zeromind.agents.registry import AgentRegistry, SqlAlchemyAgentRepository
+from zeromind.agents.session_repository import SqlAlchemyAgentSessionRepository
 from zeromind.analysis.projector import AnalysisProjector
 from zeromind.analysis.repository import SqlAlchemyAnalysisRepository
 from zeromind.bootstrap.celery import celery_app
@@ -232,6 +233,7 @@ async def _dispatch_outbox() -> int:
     workflows = SqlAlchemyWorkflowRepository(database.sessions)
     references = SqlAlchemyReferenceRepository(database.sessions)
     agents = AgentRegistry(SqlAlchemyAgentRepository(database.sessions))
+    agent_sessions = SqlAlchemyAgentSessionRepository(database.sessions)
     subscriptions = SqlAlchemySubscriptionRepository(database.sessions)
     analyses = SqlAlchemyAnalysisRepository(database.sessions)
     webhooks = SqlAlchemyWebhookRepository(database.sessions)
@@ -239,6 +241,7 @@ async def _dispatch_outbox() -> int:
         workflow_repository=workflows,
         reference_repository=references,
         agent_registry=agents,
+        agent_session_repository=agent_sessions,
         settings=settings,
     )
     run_service = WorkflowRunService(
@@ -292,3 +295,20 @@ async def _dispatch_outbox() -> int:
 @celery_app.task(name="zeromind.dispatch_outbox")  # type: ignore[untyped-decorator]
 def dispatch_outbox() -> int:
     return asyncio.run(_dispatch_outbox())
+
+
+async def _recover_stale_agent_sessions() -> int:
+    database = create_database()
+    now = datetime.now(UTC)
+    try:
+        return await SqlAlchemyAgentSessionRepository(database.sessions).fail_stale(
+            before=now - timedelta(minutes=15),
+            now=now,
+        )
+    finally:
+        await database.dispose()
+
+
+@celery_app.task(name="zeromind.recover_stale_agent_sessions")  # type: ignore[untyped-decorator]
+def recover_stale_agent_sessions() -> int:
+    return asyncio.run(_recover_stale_agent_sessions())

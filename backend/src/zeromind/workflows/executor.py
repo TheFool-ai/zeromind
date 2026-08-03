@@ -9,7 +9,18 @@ from zeromind.workflows.dsl import PATH, NodeSpec
 from zeromind.workflows.primitives import evaluate_predicate
 from zeromind.workflows.repository import WorkflowRepository
 
-NodeHandler = Callable[[dict[str, object]], Awaitable[dict[str, object]]]
+
+@dataclass(frozen=True, slots=True)
+class NodeExecutionContext:
+    workflow_run_id: uuid.UUID
+    step_run_id: uuid.UUID
+    attempt: int
+    agent_id: uuid.UUID | None
+
+
+NodeHandler = Callable[
+    [dict[str, object], NodeExecutionContext], Awaitable[dict[str, object]]
+]
 
 
 @dataclass(frozen=True, slots=True)
@@ -149,8 +160,6 @@ class WorkflowExecutor:
         resolved = resolve_mapping(node.input, context)
         if not isinstance(resolved, dict):
             raise ValueError(f"node {node.id} input must resolve to an object")
-        if node.agent_id:
-            resolved["_agent_id"] = str(node.agent_id)
         persisted_input = persistent_view(resolved)
         if not isinstance(persisted_input, dict):
             raise ValueError(f"node {node.id} input must resolve to an object")
@@ -167,29 +176,50 @@ class WorkflowExecutor:
             completed_at=None,
         )
         run.steps.append(step)
+        await self._repository.add_step(step)
         if node.type == "gate":
-            return self._execute_gate(step, node, context)
+            try:
+                result = self._execute_gate(step, node, context)
+            finally:
+                await self._repository.save_step(step)
+            return result
         handler = self._handlers.get(node.type)
         if handler is None:
+            step.status = "failed"
+            step.error = f"no handler registered for node type {node.type}"
+            step.completed_at = datetime.now(UTC)
+            await self._repository.save_step(step)
             raise ValueError(f"no handler registered for node type {node.type}")
         for attempt in range(1, node.retry.max_attempts + 1):
             step.attempts = attempt
+            await self._repository.save_step(step)
             try:
                 async with asyncio.timeout(node.timeout_seconds):
-                    result = await handler(resolved)
+                    result = await handler(
+                        resolved,
+                        NodeExecutionContext(
+                            workflow_run_id=run.id,
+                            step_run_id=step.id,
+                            attempt=attempt,
+                            agent_id=node.agent_id,
+                        ),
+                    )
                 persisted_result = persistent_view(result)
                 if not isinstance(persisted_result, dict):
                     raise ValueError(f"node {node.id} output must be an object")
                 step.output = persisted_result
                 step.status = "completed"
                 step.completed_at = datetime.now(UTC)
+                await self._repository.save_step(step)
                 return result
             except Exception as error:
                 step.error = str(error)
                 if attempt == node.retry.max_attempts:
                     step.status = "failed"
                     step.completed_at = datetime.now(UTC)
+                    await self._repository.save_step(step)
                     raise
+                await self._repository.save_step(step)
                 await asyncio.sleep(node.retry.backoff_seconds * attempt)
         raise RuntimeError("unreachable")
 
