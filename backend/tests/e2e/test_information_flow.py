@@ -306,7 +306,14 @@ def test_documented_analysis_examples_are_parseable_and_strict() -> None:
         CreateAgentRequest.model_validate(
             json.loads((examples / filename).read_text())
         )
-        for filename in ("screening-agent.json", "analysis-agent.json")
+        for filename in (
+            "screening-agent.json",
+            "core-analysis-agent.json",
+            "taxonomy-agent.json",
+            "quality-scoring-agent.json",
+            "review-agent.json",
+            "finalizer-agent.json",
+        )
     ]
     for agent in agents:
         Draft202012Validator.check_schema(agent.input_schema)
@@ -314,7 +321,14 @@ def test_documented_analysis_examples_are_parseable_and_strict() -> None:
         assert agent.input_schema["additionalProperties"] is False
         assert agent.output_schema["additionalProperties"] is False
     assert agents[0].capabilities == ("screen-content",)
-    assert agents[1].capabilities == ("analyze-content",)
+    assert [agent.capabilities[0] for agent in agents] == [
+        "screen-content",
+        "extract-content-insights",
+        "classify-content",
+        "score-content-quality",
+        "review-content-analysis",
+        "finalize-content-analysis",
+    ]
 
     spec = parse_workflow_yaml(
         (examples / "article-analysis.yaml").read_text()
@@ -322,11 +336,15 @@ def test_documented_analysis_examples_are_parseable_and_strict() -> None:
     assert spec.projection == "content_analysis_v1"
     assert spec.topological_order() == (
         "reference",
-        "screen",
+        "screening",
         "initial_gate",
         "resolve",
-        "analyze",
-        "quality_score",
+        "core_analysis",
+        "taxonomy",
+        "quality_scoring",
+        "review",
+        "finalize",
+        "deterministic_score",
         "fine_gate",
     )
     assert [
