@@ -31,8 +31,17 @@ export type RunnerEvent =
       type: "completed";
       output: Record<string, unknown>;
       usage: Record<string, number>;
+      response_sha256: string;
+      response_character_count: number;
     }
-  | { id: string; type: "failed"; code: string; message: string };
+  | {
+      id: string;
+      type: "failed";
+      code: string;
+      message: string;
+      response_sha256?: string;
+      response_character_count?: number;
+    };
 
 export type EmitEvent = (event: RunnerEvent) => void;
 

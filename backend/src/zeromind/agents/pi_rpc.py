@@ -10,7 +10,18 @@ class PiProtocolError(RuntimeError):
 
 
 class PiExecutionError(RuntimeError):
-    pass
+    def __init__(
+        self,
+        message: str,
+        *,
+        code: str = "provider_failed",
+        response_sha256: str | None = None,
+        response_character_count: int | None = None,
+    ) -> None:
+        super().__init__(message)
+        self.code = code
+        self.response_sha256 = response_sha256
+        self.response_character_count = response_character_count
 
 
 @dataclass(frozen=True, slots=True)
@@ -29,6 +40,8 @@ class PiRpcResult:
     output: dict[str, object]
     deltas: tuple[str, ...]
     usage: dict[str, int | float]
+    response_sha256: str | None = None
+    response_character_count: int | None = None
 
 
 class PiClient(Protocol):
@@ -84,7 +97,19 @@ class PiRpcClient:
                     if event_type == "delta":
                         deltas.append(str(event.get("delta", "")))
                     elif event_type == "failed":
-                        raise PiExecutionError(str(event.get("message", "Pi execution failed")))
+                        raw_count = event.get("response_character_count")
+                        raise PiExecutionError(
+                            str(event.get("message", "Pi execution failed")),
+                            code=str(event.get("code", "protocol_failed")),
+                            response_sha256=(
+                                str(event["response_sha256"])
+                                if event.get("response_sha256")
+                                else None
+                            ),
+                            response_character_count=(
+                                raw_count if isinstance(raw_count, int) else None
+                            ),
+                        )
                     elif event_type == "completed":
                         output = event.get("output")
                         usage = event.get("usage", {})
@@ -99,6 +124,16 @@ class PiRpcClient:
                                 for key, value in usage.items()
                                 if isinstance(value, int | float)
                             },
+                            response_sha256=(
+                                str(event["response_sha256"])
+                                if event.get("response_sha256")
+                                else None
+                            ),
+                            response_character_count=(
+                                event["response_character_count"]
+                                if isinstance(event.get("response_character_count"), int)
+                                else None
+                            ),
                         )
                 stderr = (
                     (await process.stderr.read()).decode(errors="replace")
@@ -109,9 +144,8 @@ class PiRpcClient:
                     f"Pi runner exited before completion: {stderr.strip()}"
                 )
         except TimeoutError as error:
-            raise PiExecutionError("Pi execution timed out") from error
+            raise PiExecutionError("Pi execution timed out", code="timed_out") from error
         finally:
             if process.returncode is None:
                 process.kill()
                 await process.wait()
-

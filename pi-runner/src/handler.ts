@@ -1,4 +1,8 @@
-import { executeWithPi, type ExecutionResult } from "./pi-executor.js";
+import {
+  executeWithPi,
+  RunnerFailure,
+  type ExecutionResult,
+} from "./pi-executor.js";
 import {
   type EmitEvent,
   type ExecuteRequest,
@@ -43,14 +47,22 @@ export async function handleLine(
       type: "completed",
       output: result.output,
       usage: result.usage,
+      response_sha256: result.responseSha256,
+      response_character_count: result.responseCharacterCount,
     });
   } catch (error) {
+    const failure = error instanceof RunnerFailure ? error : undefined;
     emit({
       id: request?.id ?? requestId(decoded),
       type: "failed",
-      code: request ? "pi_execution_failed" : "invalid_request",
+      code: failure?.code ?? (request ? "provider_failed" : "invalid_request"),
       message: safeMessage(error, request?.api_key),
+      ...(failure?.responseSha256
+        ? { response_sha256: failure.responseSha256 }
+        : {}),
+      ...(failure?.responseCharacterCount !== undefined
+        ? { response_character_count: failure.responseCharacterCount }
+        : {}),
     });
   }
 }
-

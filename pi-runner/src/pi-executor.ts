@@ -1,4 +1,5 @@
 import { InMemoryCredentialStore } from "@earendil-works/pi-ai";
+import { createHash } from "node:crypto";
 import {
   createAgentSession,
   DefaultResourceLoader,
@@ -18,6 +19,19 @@ import {
 export interface ExecutionResult {
   output: Record<string, unknown>;
   usage: Record<string, number>;
+  responseSha256: string;
+  responseCharacterCount: number;
+}
+
+export class RunnerFailure extends Error {
+  constructor(
+    public readonly code: string,
+    message: string,
+    public readonly responseSha256?: string,
+    public readonly responseCharacterCount?: number,
+  ) {
+    super(message);
+  }
 }
 
 export async function executeWithPi(
@@ -84,9 +98,22 @@ export async function executeWithPi(
     if (!text) {
       throw new Error("Pi returned no assistant output");
     }
+    const responseSha256 = createHash("sha256").update(text).digest("hex");
+    const responseCharacterCount = Array.from(text).length;
+    let output: Record<string, unknown>;
+    try {
+      output = parseModelOutput(text);
+    } catch {
+      throw new RunnerFailure(
+        "json_invalid",
+        "model returned invalid JSON",
+        responseSha256,
+        responseCharacterCount,
+      );
+    }
     const stats = session.getSessionStats();
     return {
-      output: parseModelOutput(text),
+      output,
       usage: {
         input: stats.tokens.input,
         output: stats.tokens.output,
@@ -95,6 +122,8 @@ export async function executeWithPi(
         total: stats.tokens.total,
         cost: stats.cost,
       },
+      responseSha256,
+      responseCharacterCount,
     };
   } finally {
     unsubscribe();
@@ -102,4 +131,3 @@ export async function executeWithPi(
     await modelRuntime.removeRuntimeApiKey(request.provider);
   }
 }
-
