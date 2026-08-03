@@ -5,13 +5,16 @@ from sqlalchemy import engine_from_config, pool
 
 from zeromind.agents.models import (  # noqa: F401
     AgentDefinitionModel,
+    AgentSessionModel,
+    AgentVersionModel,
     ProviderProfileModel,
 )
+from zeromind.delivery.models import WebhookEndpointModel  # noqa: F401
 from zeromind.ingestion.models import (  # noqa: F401
     ContentReferenceModel,
     ReferenceRevisionModel,
 )
-from zeromind.delivery.models import WebhookEndpointModel  # noqa: F401
+from zeromind.shared.migration_config import apply_database_url
 from zeromind.shared.models import Base
 from zeromind.subscriptions.models import SubscriptionModel  # noqa: F401
 from zeromind.workflows.models import (  # noqa: F401
@@ -21,6 +24,7 @@ from zeromind.workflows.models import (  # noqa: F401
 )
 
 config = context.config
+apply_database_url(config)
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
