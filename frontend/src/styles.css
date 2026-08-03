@@ -105,6 +105,11 @@ select:focus, button:focus-visible, a:focus-visible {
 .notice.success { color: var(--green); background: #dfece4; border-color: var(--green); }
 .notice.warning { color: #80530f; background: #f6ead3; border-color: #c68b2f; }
 .workflow-validation { display: grid; gap: .5rem; margin-top: .75rem; }
+.version-row, .session-row { border-top: 1px solid var(--line); padding: .8rem 0; }
+.version-row summary, .session-row summary { cursor: pointer; display: flex; justify-content: space-between; gap: .75rem; }
+.version-row small, .session-row small { color: var(--muted); }
+.timeline-group { display: grid; gap: .35rem; }
+.session-row { margin-left: 2.8rem; padding: .55rem .75rem; border: 1px solid var(--line); border-radius: .5rem; }
 .workflow-validation .notice.success { display: grid; gap: .35rem; }
 .empty { text-align: center; padding: 3rem 1rem; color: var(--muted); font-size: .85rem; }
 .preview-list { max-height: 220px; overflow: auto; border-top: 1px solid var(--line); }

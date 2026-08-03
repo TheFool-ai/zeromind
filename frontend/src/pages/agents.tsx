@@ -1,12 +1,13 @@
 import {useMutation, useQuery, useQueryClient} from "@tanstack/react-query";
 import {useState, type FormEvent} from "react";
 
-import {api, type Agent, type Provider} from "../api/client";
+import {api, type Agent, type AgentVersion, type Provider} from "../api/client";
 import {Empty, ErrorNotice, PageHeader, Panel, Status} from "../components";
 
 export function AgentsPage() {
   const queryClient = useQueryClient();
   const [view, setView] = useState<"agents" | "providers">("agents");
+  const [selectedAgent, setSelectedAgent] = useState<Agent | null>(null);
   const providers = useQuery({
     queryKey: ["providers"],
     queryFn: () => api<{items: Provider[]}>("/providers"),
@@ -15,6 +16,12 @@ export function AgentsPage() {
   const agents = useQuery({
     queryKey: ["agents"],
     queryFn: () => api<{items: Agent[]}>("/agents"),
+    retry: false
+  });
+  const versions = useQuery({
+    queryKey: ["agent-versions", selectedAgent?.id],
+    queryFn: () => api<{items: AgentVersion[]}>(`/agents/${selectedAgent?.id}/versions`),
+    enabled: Boolean(selectedAgent),
     retry: false
   });
   const createProvider = useMutation({
@@ -145,11 +152,34 @@ export function AgentsPage() {
                     >
                       {item.enabled ? "停用 Agent" : "启用 Agent"}
                     </button>
+                    <button
+                      className="tiny secondary"
+                      onClick={() => setSelectedAgent(item)}
+                    >
+                      查看版本
+                    </button>
                   </article>
                 ))}
               </div>
             )}
           </Panel>
+          {selectedAgent ? (
+            <Panel title={`${selectedAgent.name} · 版本历史`}>
+              {versions.error ? <ErrorNotice error={versions.error} /> : null}
+              {versions.data?.items.map((version) => (
+                <details className="version-row" key={version.id}>
+                  <summary>
+                    <strong>v{version.version}</strong>
+                    <small>{version.capabilities.join(" · ")} · {version.created_at}</small>
+                  </summary>
+                  <h3>System prompt</h3>
+                  <pre>{version.system_prompt}</pre>
+                  <h3>输出 Schema</h3>
+                  <pre>{JSON.stringify(version.output_schema, null, 2)}</pre>
+                </details>
+              ))}
+            </Panel>
+          ) : null}
         </>
       )}
     </>

@@ -200,6 +200,38 @@ export type Agent = {
   provider_profile_id: string;
   enabled: boolean;
   version: number;
+  version_id: string;
+};
+
+export type AgentVersion = {
+  id: string;
+  agent_id: string;
+  version: number;
+  capabilities: string[];
+  system_prompt: string;
+  provider_profile_id: string;
+  input_schema: Record<string, unknown>;
+  output_schema: Record<string, unknown>;
+  created_at: string;
+};
+
+export type AgentSession = {
+  id: string;
+  workflow_run_id: string;
+  step_run_id: string;
+  agent_id: string;
+  agent_version_id: string;
+  attempt: number;
+  provider: string;
+  model: string;
+  status: string;
+  sanitized_input: Record<string, unknown>;
+  output: Record<string, unknown> | null;
+  usage: Record<string, number> | null;
+  error_code: string | null;
+  error_message: string | null;
+  started_at: string;
+  completed_at: string | null;
 };
 
 export type Workflow = {

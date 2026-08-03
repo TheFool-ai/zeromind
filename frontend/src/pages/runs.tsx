@@ -1,7 +1,7 @@
 import {useQuery} from "@tanstack/react-query";
 import {useState} from "react";
 
-import {api, type WorkflowRun} from "../api/client";
+import {api, type AgentSession, type WorkflowRun} from "../api/client";
 import {Empty, ErrorNotice, formatTime, PageHeader, Panel, Status} from "../components";
 
 export function RunsPage() {
@@ -13,6 +13,13 @@ export function RunsPage() {
     retry: false
   });
   const current = runs.data?.items.find((item) => item.id === selected) ?? runs.data?.items[0];
+  const sessions = useQuery({
+    queryKey: ["agent-sessions", current?.id],
+    queryFn: () => api<{items: AgentSession[]}>(`/agent-sessions?workflow_run_id=${current?.id}`),
+    enabled: Boolean(current),
+    refetchInterval: 10_000,
+    retry: false
+  });
 
   return (
     <>
@@ -36,10 +43,25 @@ export function RunsPage() {
           </Panel>
           <Panel title="节点时间线">
             {current?.steps.map((step, index) => (
-              <div className="timeline-item" key={step.id}>
-                <span className="timeline-index">{index + 1}</span>
-                <div><strong>{step.node_id}</strong><small>尝试 {step.attempts} 次 {step.error ? `· ${step.error}` : ""}</small></div>
-                <Status value={step.status} />
+              <div className="timeline-group" key={step.id}>
+                <div className="timeline-item">
+                  <span className="timeline-index">{index + 1}</span>
+                  <div><strong>{step.node_id}</strong><small>尝试 {step.attempts} 次 {step.error ? `· ${step.error}` : ""}</small></div>
+                  <Status value={step.status} />
+                </div>
+                {sessions.data?.items
+                  .filter((session) => session.step_run_id === step.id)
+                  .map((session) => (
+                    <details className="session-row" key={session.id}>
+                      <summary>
+                        Agent · {session.provider}/{session.model} · 尝试 {session.attempt}
+                        <Status value={session.status} />
+                      </summary>
+                      <small>Agent {session.agent_id} · 版本 {session.agent_version_id}</small>
+                      {session.error_message ? <p>{session.error_code}: {session.error_message}</p> : null}
+                      <pre>{JSON.stringify(session.output ?? session.sanitized_input, null, 2)}</pre>
+                    </details>
+                  ))}
               </div>
             ))}
             <h3>结构化结果</h3>

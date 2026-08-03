@@ -331,6 +331,45 @@ describe("ZeroMind administration", () => {
     expect(submitted).toMatchObject({access_key: null});
   });
 
+  it("shows registered agent configuration history", async () => {
+    localStorage.setItem("zeromind_token", "token");
+    window.history.replaceState({}, "", "/agents");
+    const agent = {
+      id: "33333333-3333-3333-3333-333333333333",
+      name: "文章核心分析",
+      description: "提取核心洞察",
+      capabilities: ["extract-content-insights"],
+      provider_profile_id: "11111111-1111-1111-1111-111111111111",
+      enabled: true,
+      version: 2,
+      version_id: "44444444-4444-4444-4444-444444444444"
+    };
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
+      const url = String(input);
+      if (url.endsWith(`/agents/${agent.id}/versions`)) {
+        return response({
+          items: [{
+            ...agent,
+            agent_id: agent.id,
+            system_prompt: "只依据正文提取事实。",
+            input_schema: {type: "object"},
+            output_schema: {type: "object"},
+            created_at: "2026-08-03T00:00:00Z"
+          }]
+        });
+      }
+      if (url.endsWith("/providers")) return response({items: []});
+      return response({items: [agent]});
+    });
+    render(<App />);
+
+    await userEvent.click(await screen.findByRole("button", {name: "查看版本"}));
+    await userEvent.click((await screen.findAllByText("v2"))[1]);
+
+    expect(await screen.findByText("只依据正文提取事实。")).toBeVisible();
+    expect(screen.getByText("文章核心分析 · 版本历史")).toBeVisible();
+  });
+
   it("renders workflow validation errors returned by the API", async () => {
     localStorage.setItem("zeromind_token", "token");
     window.history.replaceState({}, "", "/workflows");
