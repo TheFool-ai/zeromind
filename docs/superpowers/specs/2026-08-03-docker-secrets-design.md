@@ -54,9 +54,11 @@ rules cannot drift between subsystems.
 
 Compose declares one secret per independently rotatable credential. Secret
 source files live outside the repository, under a root-owned deployment
-directory such as `/etc/zeromind/secrets`. The directory is mode `0700` and
-individual files are mode `0600` on the host. The deployment documentation
-must not prescribe storing secret values in `.env`.
+directory such as `/etc/zeromind/secrets`. The directory is mode `0750` and
+individual files are mode `0640`, owned by root and a dedicated numeric
+`zeromind-secrets` group. Only root and container processes explicitly granted
+that supplemental group can read them. The deployment documentation must not
+prescribe storing secret values in `.env`.
 
 Compose mounts only the secrets each service requires:
 
@@ -75,6 +77,12 @@ Docker Compose file-backed secrets are mounted read-only under `/run/secrets`.
 The Compose file contains only secret names and paths such as
 `GLM_API_KEY_FILE=/run/secrets/glm_api_key`; it never interpolates secret
 contents into an environment variable.
+
+Compose implements file-backed secrets as bind mounts and does not honor the
+long-syntax `uid`, `gid`, or `mode` remapping fields for them. The deployment
+therefore assigns a stable host group ID to the secret files and grants that
+same supplemental group only to consuming services. This preserves non-root
+application containers without making mounted files world-readable.
 
 Because Compose file-backed secrets do not provide Swarm-style secret
 management, operators must back up and transfer the host secret directory
