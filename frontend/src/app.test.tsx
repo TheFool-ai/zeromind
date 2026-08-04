@@ -135,6 +135,16 @@ const referenceDetail = {
   analysis: analysisDetail
 } as const;
 
+const referenceReaderContent = {
+  source_url: analysisCard.original_url,
+  final_url: analysisCard.original_url,
+  canonical_url: analysisCard.original_url,
+  title: analysisCard.title,
+  author: analysisCard.author,
+  language: "en",
+  text: "This is the transient original article body.\n\nIt is rendered safely inside ZeroMind."
+} as const;
+
 describe("ZeroMind administration", () => {
   beforeEach(() => {
     window.history.replaceState({}, "", "/");
@@ -559,10 +569,14 @@ describe("ZeroMind administration", () => {
     ));
   });
 
-  it("renders the original and complete structured analysis side by side", async () => {
+  it("renders transient original content and structured analysis side by side", async () => {
     localStorage.setItem("zeromind_token", "token");
     window.history.replaceState({}, "", `/references/${analysisCard.reference_id}`);
-    vi.spyOn(globalThis, "fetch").mockResolvedValue(response(referenceDetail));
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (input) =>
+      String(input).endsWith("/content")
+        ? response(referenceReaderContent)
+        : response(referenceDetail)
+    );
 
     render(<App />);
 
@@ -570,7 +584,6 @@ describe("ZeroMind administration", () => {
     expect(screen.getByText("分析完成")).toBeVisible();
     expect(screen.getByLabelText("总评分 86")).toBeVisible();
     expect(screen.getByText("一句话总结")).toBeVisible();
-    expect(screen.getByText("RSS 元数据摘要")).toBeVisible();
     expect(screen.queryByText(/<strong>/)).not.toBeInTheDocument();
     expect(screen.getByText(analysisDetail.summary)).toBeVisible();
     expect(screen.getByText("确定性门禁让筛选结果更可解释。")).toBeVisible();
@@ -578,9 +591,26 @@ describe("ZeroMind administration", () => {
     expect(screen.getByText("六维评分")).toBeVisible();
     expect(screen.getByText("recommended")).toBeVisible();
     expect(screen.getByText("Agent 追溯")).toBeVisible();
-    const frame = screen.getByTitle("原文：A useful article");
-    expect(frame).toHaveAttribute("sandbox", "allow-scripts allow-same-origin allow-forms allow-popups");
-    expect(frame.getAttribute("sandbox")).not.toContain("allow-top-navigation");
+    expect(await screen.findByText(/transient original article body/)).toBeVisible();
+    expect(screen.queryByTitle("原文：A useful article")).not.toBeInTheDocument();
+    expect(screen.getByText(/未在 ZeroMind 中持久化/)).toBeVisible();
+    expect(screen.getAllByRole("link", {name: /新窗口打开原文/})[0]).toHaveAttribute("target", "_blank");
+  });
+
+  it("falls back to RSS metadata when transient content extraction fails", async () => {
+    localStorage.setItem("zeromind_token", "token");
+    window.history.replaceState({}, "", `/references/${analysisCard.reference_id}`);
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (input) =>
+      String(input).endsWith("/content")
+        ? response({detail: {code: "content_resolution_failed"}}, 502)
+        : response(referenceDetail)
+    );
+
+    render(<App />);
+
+    expect(await screen.findByText("暂时无法生成站内原文")).toBeVisible();
+    expect(screen.getByRole("button", {name: "重新提取"})).toBeVisible();
+    expect(screen.getAllByText("RSS 元数据摘要").length).toBeGreaterThan(0);
     expect(screen.getAllByRole("link", {name: /新窗口打开原文/})[0]).toHaveAttribute("target", "_blank");
   });
 

@@ -152,6 +152,16 @@ export type ReferenceReadingDetail = Omit<
   analysis: AnalysisDetail | null;
 };
 
+export type ReferenceReaderContent = {
+  source_url: string;
+  final_url: string;
+  canonical_url: string | null;
+  title: string | null;
+  author: string | null;
+  language: string | null;
+  text: string;
+};
+
 export type AnalysisDecision = "qualified" | "rejected";
 
 export type GeneratedAnalysisStatus =

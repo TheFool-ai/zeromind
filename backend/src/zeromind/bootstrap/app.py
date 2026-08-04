@@ -27,6 +27,7 @@ from zeromind.analysis.repository import (
 from zeromind.analysis.service import AnalysisService
 from zeromind.bootstrap.runtime import build_workflow_executor
 from zeromind.content.network_policy import NetworkPolicy
+from zeromind.content.resolver import ContentResolver
 from zeromind.delivery.api import create_delivery_router
 from zeromind.delivery.repository import (
     InMemoryWebhookRepository,
@@ -118,6 +119,7 @@ def create_app(
     webhook_repository: WebhookRepository | None = None,
     webhook_network_policy: NetworkPolicy | None = None,
     rsshub_service: RSSHubInstanceService | None = None,
+    content_resolver: ContentResolver | None = None,
     require_auth: bool = False,
 ) -> FastAPI:
     resolved_database = database
@@ -251,6 +253,7 @@ def create_app(
                 read_subscriptions,
                 analysis_repository,
                 workflow_repository,
+                content_resolver or ContentResolver(network_policy=NetworkPolicy()),
             ),
         )
     )

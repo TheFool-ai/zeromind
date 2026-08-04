@@ -2,7 +2,12 @@ import {useMutation, useQuery, useQueryClient} from "@tanstack/react-query";
 import {useState} from "react";
 import {Link, useParams} from "react-router-dom";
 
-import {api, type ReferenceAnalysisStatus, type ReferenceReadingDetail} from "../api/client";
+import {
+  api,
+  type ReferenceAnalysisStatus,
+  type ReferenceReaderContent,
+  type ReferenceReadingDetail
+} from "../api/client";
 import {
   dimensionLabels,
   Empty,
@@ -32,6 +37,15 @@ export function ReferenceDetailPage() {
       const value = query.state.data;
       return value && !terminal.has(value.analysis_status) ? 5000 : false;
     },
+    retry: false
+  });
+  const originalContent = useQuery({
+    queryKey: ["reference-reader-content", referenceId],
+    queryFn: () =>
+      api<ReferenceReaderContent>(`/references/${referenceId}/content`),
+    enabled: Boolean(
+      detail.data && (detail.data.revision.url ?? detail.data.original_url)
+    ),
     retry: false
   });
   const reanalyze = useMutation({
@@ -93,23 +107,44 @@ export function ReferenceDetailPage() {
             <strong>原文阅读</strong>
             {originalUrl ? <a href={originalUrl} target="_blank" rel="noreferrer">新窗口打开原文</a> : null}
           </div>
-          {value.iframe_url ? (
-            <iframe
-              title={`原文：${value.revision.title}`}
-              src={value.iframe_url}
-              sandbox="allow-scripts allow-same-origin allow-forms allow-popups"
-              referrerPolicy="no-referrer-when-downgrade"
-            />
+          {originalContent.isLoading ? (
+            <div className="original-loading" aria-live="polite">
+              <span />
+              <strong>正在提取原文…</strong>
+              <p>元信息已就绪，正文会在本次请求中临时读取，不会写入数据库。</p>
+            </div>
           ) : null}
-          <div className="original-fallback">
-            <strong>如果原文无法显示</strong>
-            <p>部分网站禁止被嵌入。你仍可在新窗口阅读；这里保留 RSS 元数据作为回退。</p>
-            <dl>
-              <div><dt>标题</dt><dd>{value.revision.title}</dd></div>
-              <div><dt>摘要</dt><dd>{plainText(value.revision.summary)}</dd></div>
-              <div><dt>作者</dt><dd>{value.revision.author ?? "—"}</dd></div>
-            </dl>
-          </div>
+          {originalContent.data ? (
+            <article className="original-reader">
+              <div className="original-reader-meta">
+                <span>{originalContent.data.language ?? "原文"}</span>
+                {originalContent.data.author ? <strong>{originalContent.data.author}</strong> : null}
+              </div>
+              <h2>{originalContent.data.title ?? value.revision.title}</h2>
+              <div className="original-reader-body">{originalContent.data.text}</div>
+              <footer>
+                <span>正文为实时提取结果，未在 ZeroMind 中持久化。</span>
+                <a href={originalContent.data.final_url} target="_blank" rel="noreferrer">查看来源 ↗</a>
+              </footer>
+            </article>
+          ) : null}
+          {!originalContent.isLoading && !originalContent.data ? (
+            <div className="original-fallback" role={originalContent.error ? "alert" : undefined}>
+              <strong>暂时无法生成站内原文</strong>
+              <p>原站可能要求登录、依赖浏览器脚本或暂时不可访问。你仍可在新窗口阅读；这里保留 RSS 元数据作为回退。</p>
+              <dl>
+                <div><dt>标题</dt><dd>{value.revision.title}</dd></div>
+                <div><dt>摘要</dt><dd>{plainText(value.revision.summary)}</dd></div>
+                <div><dt>作者</dt><dd>{value.revision.author ?? "—"}</dd></div>
+              </dl>
+              {originalUrl ? (
+                <div className="original-fallback-actions">
+                  <button className="secondary" onClick={() => void originalContent.refetch()}>重新提取</button>
+                  <a href={originalUrl} target="_blank" rel="noreferrer">新窗口打开原文 ↗</a>
+                </div>
+              ) : null}
+            </div>
+          ) : null}
         </section>
 
         <aside className={`reference-analysis-rail ${mobileView !== "analysis" ? "mobile-hidden" : ""}`}>

@@ -2,10 +2,13 @@ from datetime import datetime
 from typing import Annotated
 from uuid import UUID, uuid4
 
+import httpx
 from fastapi import APIRouter, HTTPException, Query, status
 from pydantic import BaseModel, ConfigDict
 
 from zeromind.analysis.api import AnalysisCardResponse, AnalysisDetailResponse
+from zeromind.content.network_policy import BlockedNetworkTarget
+from zeromind.content.resolver import ContentResolutionError, ResolvedDocument
 from zeromind.ingestion.analysis_queue import (
     AnalysisAlreadyProcessing,
     AnalysisRevisionConflict,
@@ -18,6 +21,7 @@ from zeromind.ingestion.domain import (
     ReferenceSummary,
 )
 from zeromind.ingestion.read_models import (
+    ContentResolverUnavailable,
     ReferenceListItem,
     ReferenceListQuery,
     ReferenceReadService,
@@ -128,6 +132,28 @@ class ReferenceReadingDetailResponse(ReferenceResponse):
     analysis: AnalysisDetailResponse | None
 
 
+class ReferenceContentResponse(BaseModel):
+    source_url: str
+    final_url: str
+    canonical_url: str | None
+    title: str | None
+    author: str | None
+    language: str | None
+    text: str
+
+    @classmethod
+    def from_document(cls, value: ResolvedDocument) -> "ReferenceContentResponse":
+        return cls(
+            source_url=value.source_url,
+            final_url=value.final_url,
+            canonical_url=value.canonical_url,
+            title=value.title,
+            author=value.author,
+            language=value.language,
+            text=value.text,
+        )
+
+
 def create_reference_router(
     repository: ReferenceRepository,
     analysis_queue: ReferenceAnalysisQueue | None = None,
@@ -205,6 +231,40 @@ def create_reference_router(
                 else None
             ),
         )
+
+    @router.get(
+        "/{reference_id}/content",
+        response_model=ReferenceContentResponse,
+    )
+    async def get_reference_content(
+        reference_id: UUID,
+    ) -> ReferenceContentResponse:
+        if read_service is None:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail={"code": "reference_read_service_unavailable"},
+            )
+        try:
+            document = await read_service.resolve_content(reference_id)
+        except KeyError as error:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail={"code": "reference_not_found"},
+            ) from error
+        except ContentResolverUnavailable as error:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail={"code": "content_resolver_unavailable"},
+            ) from error
+        except (BlockedNetworkTarget, ContentResolutionError, httpx.HTTPError) as error:
+            raise HTTPException(
+                status_code=status.HTTP_502_BAD_GATEWAY,
+                detail={
+                    "code": "content_resolution_failed",
+                    "message": str(error),
+                },
+            ) from error
+        return ReferenceContentResponse.from_document(document)
 
     @router.get("/{reference_id}", response_model=ReferenceDetailResponse)
     async def get_reference(reference_id: UUID) -> ReferenceDetailResponse:

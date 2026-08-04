@@ -9,7 +9,11 @@ from zeromind.ingestion.domain import FeedEntry
 from zeromind.ingestion.lifecycle import (
     InMemoryReferenceAnalysisLifecycleRepository,
 )
-from zeromind.ingestion.read_models import ReferenceListQuery, ReferenceReadService
+from zeromind.ingestion.read_models import (
+    ContentResolverUnavailable,
+    ReferenceListQuery,
+    ReferenceReadService,
+)
 from zeromind.ingestion.repository import InMemoryReferenceRepository
 from zeromind.ingestion.service import IngestionService
 from zeromind.subscriptions.domain import Subscription
@@ -161,3 +165,11 @@ async def test_reading_detail_normalizes_iframe_and_returns_analysis() -> None:
     assert detail.revision.summary == "Summary 1"
     assert detail.analysis is not None
     assert detail.analysis.total_score == 88
+
+
+@pytest.mark.asyncio
+async def test_transient_content_requires_a_configured_resolver() -> None:
+    service, (pending_id, _) = await _service()
+
+    with pytest.raises(ContentResolverUnavailable):
+        await service.resolve_content(pending_id)

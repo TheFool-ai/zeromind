@@ -1,9 +1,10 @@
 import uuid
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime
 
 from zeromind.analysis.domain import ContentAnalysis
 from zeromind.analysis.repository import AnalysisRepository
+from zeromind.content.resolver import ContentResolver, ResolvedDocument
 from zeromind.ingestion.domain import (
     AnalysisStatus,
     ContentReference,
@@ -49,6 +50,10 @@ class ReferenceReadingDetail:
     iframe_url: str | None
 
 
+class ContentResolverUnavailable(RuntimeError):
+    pass
+
+
 class ReferenceReadService:
     def __init__(
         self,
@@ -56,11 +61,13 @@ class ReferenceReadService:
         subscriptions: SubscriptionRepository,
         analyses: AnalysisRepository,
         workflows: WorkflowRepository,
+        content_resolver: ContentResolver | None = None,
     ) -> None:
         self._references = references
         self._subscriptions = subscriptions
         self._analyses = analyses
         self._workflows = workflows
+        self._content_resolver = content_resolver
 
     async def _main_workflow(self) -> WorkflowDefinition | None:
         matches = [
@@ -160,3 +167,18 @@ class ReferenceReadService:
                 revision.url or reference.original_url
             ),
         )
+
+    async def resolve_content(self, reference_id: uuid.UUID) -> ResolvedDocument:
+        reference = await self._references.get_reference(reference_id)
+        if reference is None:
+            raise KeyError(reference_id)
+        if self._content_resolver is None:
+            raise ContentResolverUnavailable
+        revision = await self._references.get_current_revision(reference_id)
+        current_url = normalized_entry_url(revision.url or reference.original_url)
+        transient_reference = (
+            replace(reference, original_url=current_url)
+            if current_url != reference.original_url
+            else reference
+        )
+        return await self._content_resolver.resolve(transient_reference)
