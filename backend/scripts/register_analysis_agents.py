@@ -13,6 +13,7 @@ from zeromind.agents.registry import AgentRegistry, SqlAlchemyAgentRepository
 from zeromind.shared.database import create_database
 from zeromind.workflows.domain import WorkflowDefinition
 from zeromind.workflows.dsl import parse_workflow_yaml, validate_workflow
+from zeromind.workflows.presets import upsert_main_analysis_workflow
 from zeromind.workflows.repository import SqlAlchemyWorkflowRepository
 
 EXAMPLES = Path(__file__).resolve().parents[2] / "docs" / "examples"
@@ -117,25 +118,7 @@ async def register_presets(
             source = source.replace(placeholder, agent_id)
         spec = parse_workflow_yaml(source)
         await validate_workflow(spec, registry)
-        existing_workflow = next(
-            (
-                item
-                for item in await workflows.list_definitions()
-                if item.name == spec.name
-            ),
-            None,
-        )
-        if existing_workflow is None:
-            workflow = WorkflowDefinition.create(spec)
-            workflow.activate()
-            await workflows.add_definition(workflow)
-        else:
-            workflow = existing_workflow
-            if workflow.spec != spec:
-                workflow.spec = spec
-                workflow.version += 1
-            workflow.activate()
-            await workflows.save_definition(workflow)
+        workflow = await upsert_main_analysis_workflow(workflows, spec)
         return tuple(registered), workflow
     finally:
         await database.dispose()

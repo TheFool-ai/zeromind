@@ -42,7 +42,7 @@ docker compose ps
 3. 在“智能体”中创建 Provider Profile；`api_key_env` 填环境变量名，例如
    `OPENAI_API_KEY`。把 API 返回的 Provider ID 记下来。
 4. 若 Provider 配置名为 `GLM`，运行下面的幂等注册命令。它会注册六个分析 Agent、替换 DSL
-   中的 Agent ID，并保存及激活 `bestblogs-six-agent-analysis` 工作流：
+   中的 Agent ID，并保存及激活 `信息分析工作流`：
 
    ```bash
    docker compose run --rm api \

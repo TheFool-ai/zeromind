@@ -1,4 +1,4 @@
-name: bestblogs-six-agent-analysis
+name: 信息分析工作流
 trigger:
   events: [reference.discovered, reference.updated, manual]
 projection: content_analysis_v1
