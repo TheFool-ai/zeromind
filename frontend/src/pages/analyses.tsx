@@ -59,35 +59,41 @@ function queryPath(
 function AnalysisCardView({item}: {item: AnalysisCard}) {
   return (
     <article className="analysis-card">
-      <div className="analysis-card-top">
-        <AnalysisStatus value={item.generated_status} />
-        {item.overridden ? (
-          <span className="override-badge">人工改判</span>
-        ) : null}
+      <div className="analysis-card-main">
+        <div className="analysis-card-top">
+          <AnalysisStatus value={item.generated_status} />
+          {item.overridden ? (
+            <span className="override-badge">人工改判</span>
+          ) : null}
+          <span className="analysis-source">
+            <strong>{item.source_name}</strong>
+            <time>{formatTime(item.published_at ?? item.observed_at)}</time>
+          </span>
+        </div>
+        <h2>
+          <Link to={`/analyses/${item.id}`}>{item.title}</Link>
+        </h2>
+        <p className="analysis-summary">
+          {item.one_sentence_summary ?? "该条目没有生成一句话摘要。"}
+        </p>
+        <div className="analysis-classification">
+          {item.primary_category ? (
+            <span className="category-chip">{item.primary_category}</span>
+          ) : null}
+          {item.tags.map((tag) => (
+            <span key={tag}>#{tag}</span>
+          ))}
+        </div>
       </div>
-      <div className="analysis-source">
-        <strong>{item.source_name}</strong>
-        <time>{formatTime(item.published_at ?? item.observed_at)}</time>
-      </div>
-      <h2>
-        <Link to={`/analyses/${item.id}`}>{item.title}</Link>
-      </h2>
-      <p className="analysis-summary">
-        {item.one_sentence_summary ?? "该条目没有生成一句话摘要。"}
-      </p>
-      <div className="analysis-classification">
-        {item.primary_category ? (
-          <span className="category-chip">{item.primary_category}</span>
-        ) : null}
-        {item.tags.map((tag) => (
-          <span key={tag}>#{tag}</span>
-        ))}
+      <div
+        className="analysis-card-score"
+        aria-label={`综合评分 ${item.total_score ?? "暂无"}`}
+      >
+        <strong>{item.total_score ?? "—"}</strong>
+        <span>综合评分</span>
       </div>
       <div className="analysis-card-footer">
-        <div className="score-badge">
-          <strong>{item.total_score ?? "—"}</strong>
-          <span>综合分</span>
-        </div>
+        <span>查看完整分析 →</span>
         {item.original_url ? (
           <a
             href={item.original_url}
@@ -239,7 +245,7 @@ export function AnalysesPage() {
         </Empty>
       ) : null}
       {items.length > 0 ? (
-        <section className="analysis-grid" aria-label="结构化分析结果">
+        <section className="analysis-stream" aria-label="结构化分析结果">
           {items.map((item) => (
             <AnalysisCardView key={item.id} item={item} />
           ))}
