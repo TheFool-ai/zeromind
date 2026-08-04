@@ -140,7 +140,10 @@ export type ReferenceRevision = {
   observed_at: string;
 };
 
-export type ReferenceReadingDetail = Omit<Reference, "published_at" | "analysis"> & {
+export type ReferenceReadingDetail = Omit<
+  Reference,
+  "published_at" | "analysis" | "title" | "summary" | "author"
+> & {
   revision: ReferenceRevision;
   source_name: string | null;
   source_feed_url: string | null;

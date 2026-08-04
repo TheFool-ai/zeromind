@@ -14,6 +14,7 @@ import {AnalysisDetailPage} from "./pages/analysis-detail";
 import {AnalysesPage} from "./pages/analyses";
 import {OverviewPage} from "./pages/overview";
 import {ReferencesPage} from "./pages/references";
+import {ReferenceDetailPage} from "./pages/reference-detail";
 import {RSSHubPage} from "./pages/rsshub";
 import {RunsPage} from "./pages/runs";
 import {SubscriptionsPage} from "./pages/subscriptions";
@@ -101,6 +102,7 @@ function Shell({logout}: {logout: () => void}) {
           <Route path="/subscriptions" element={<SubscriptionsPage />} />
           <Route path="/rsshub" element={<RSSHubPage />} />
           <Route path="/references" element={<ReferencesPage />} />
+          <Route path="/references/:referenceId" element={<ReferenceDetailPage />} />
           <Route path="/analyses" element={<AnalysesPage />} />
           <Route
             path="/analyses/:analysisId"
