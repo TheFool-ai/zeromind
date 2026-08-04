@@ -47,6 +47,7 @@ def test_reference_list_and_detail_expose_metadata_not_article_body() -> None:
     listed = client.get("/api/v1/references")
     reference_id = listed.json()["items"][0]["id"]
     detail = client.get(f"/api/v1/references/{reference_id}")
+    reading = client.get(f"/api/v1/references/{reference_id}/reading-detail")
 
     assert listed.status_code == 200
     assert listed.json()["items"][0]["published_at"] == "2026-07-29T00:00:00Z"
@@ -54,6 +55,10 @@ def test_reference_list_and_detail_expose_metadata_not_article_body() -> None:
     assert detail.json()["revisions"][0]["summary"] == "RSS summary only"
     assert "body" not in detail.text
     assert "content" not in detail.json()["revisions"][0]
+    assert reading.status_code == 200
+    assert reading.json()["revision"]["title"] == "Title"
+    assert reading.json()["iframe_url"] == "https://example.com/42"
+    assert reading.json()["analysis"] is None
 
 
 def test_manual_reanalysis_resets_and_enqueues_current_revision() -> None:

@@ -45,6 +45,7 @@ from zeromind.ingestion.lifecycle import (
     InMemoryReferenceAnalysisLifecycleRepository,
     SqlAlchemyReferenceAnalysisLifecycleRepository,
 )
+from zeromind.ingestion.read_models import ReferenceReadService
 from zeromind.ingestion.repository import (
     InMemoryReferenceRepository,
     ReferenceRepository,
@@ -203,9 +204,6 @@ def create_app(
                 InMemoryOutboxRepository(),
             )
         )
-    app.include_router(
-        create_reference_router(reference_repository, reference_analysis_queue)
-    )
     if agent_registry is None:
         agent_registry = AgentRegistry(
             SqlAlchemyAgentRepository(resolved_database.sessions)
@@ -241,6 +239,21 @@ def create_app(
         reference_repository,
         analysis_repository,
     )
+    read_subscriptions = (
+        resolved_subscription_repository or InMemorySubscriptionRepository()
+    )
+    app.include_router(
+        create_reference_router(
+            reference_repository,
+            reference_analysis_queue,
+            ReferenceReadService(
+                reference_repository,
+                read_subscriptions,
+                analysis_repository,
+                workflow_repository,
+            ),
+        )
+    )
     if workflow_run_service is None:
         lifecycle_repository = (
             SqlAlchemyReferenceAnalysisLifecycleRepository(
@@ -267,8 +280,7 @@ def create_app(
                 "content_analysis_v1": AnalysisProjector(
                     analysis_repository,
                     reference_repository,
-                    resolved_subscription_repository
-                    or InMemorySubscriptionRepository(),
+                    read_subscriptions,
                 )
             },
             observer=workflow_observer,

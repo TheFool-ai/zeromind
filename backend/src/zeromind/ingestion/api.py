@@ -1,9 +1,11 @@
 from datetime import datetime
+from typing import Annotated
 from uuid import UUID, uuid4
 
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, HTTPException, Query, status
 from pydantic import BaseModel, ConfigDict
 
+from zeromind.analysis.api import AnalysisCardResponse, AnalysisDetailResponse
 from zeromind.ingestion.analysis_queue import (
     AnalysisAlreadyProcessing,
     AnalysisRevisionConflict,
@@ -14,6 +16,11 @@ from zeromind.ingestion.domain import (
     ContentReference,
     ReferenceRevision,
     ReferenceSummary,
+)
+from zeromind.ingestion.read_models import (
+    ReferenceListItem,
+    ReferenceListQuery,
+    ReferenceReadService,
 )
 from zeromind.ingestion.repository import ReferenceRepository
 
@@ -63,12 +70,37 @@ class RevisionResponse(BaseModel):
 
 class ReferenceListItemResponse(ReferenceResponse):
     published_at: datetime | None
+    title: str | None = None
+    summary: str | None = None
+    author: str | None = None
+    source_name: str | None = None
+    source_feed_url: str | None = None
+    analysis: AnalysisCardResponse | None = None
 
     @classmethod
     def from_summary(cls, value: ReferenceSummary) -> "ReferenceListItemResponse":
         return cls(
             **ReferenceResponse.from_domain(value.reference).model_dump(),
             published_at=value.published_at,
+        )
+
+    @classmethod
+    def from_read_model(cls, value: ReferenceListItem) -> "ReferenceListItemResponse":
+        return cls(
+            **ReferenceResponse.from_domain(value.reference).model_dump(),
+            published_at=value.revision.published_at,
+            title=value.revision.title,
+            summary=value.revision.summary,
+            author=value.revision.author,
+            source_name=value.subscription.title if value.subscription else None,
+            source_feed_url=(
+                value.subscription.feed_url if value.subscription else None
+            ),
+            analysis=(
+                AnalysisCardResponse.from_domain(value.analysis)
+                if value.analysis
+                else None
+            ),
         )
 
 
@@ -87,17 +119,91 @@ class ReanalysisResponse(BaseModel):
     analysis_status: AnalysisStatus
 
 
+class ReferenceReadingDetailResponse(ReferenceResponse):
+    revision: RevisionResponse
+    source_name: str | None
+    source_feed_url: str | None
+    source_site_url: str | None
+    iframe_url: str | None
+    analysis: AnalysisDetailResponse | None
+
+
 def create_reference_router(
     repository: ReferenceRepository,
     analysis_queue: ReferenceAnalysisQueue | None = None,
+    read_service: ReferenceReadService | None = None,
 ) -> APIRouter:
     router = APIRouter(prefix="/api/v1/references", tags=["references"])
 
     @router.get("", response_model=ReferenceListResponse)
-    async def list_references() -> ReferenceListResponse:
+    async def list_references(
+        analysis_status: Annotated[
+            AnalysisStatus | None,
+            Query(alias="status"),
+        ] = None,
+        category: Annotated[
+            str | None,
+            Query(min_length=1, max_length=160),
+        ] = None,
+        minimum_score: Annotated[
+            int | None,
+            Query(ge=0, le=100),
+        ] = None,
+        subscription_id: UUID | None = None,
+        published_from: datetime | None = None,
+        published_to: datetime | None = None,
+    ) -> ReferenceListResponse:
+        if read_service is not None:
+            items = await read_service.list(
+                ReferenceListQuery(
+                    status=analysis_status,
+                    category=category,
+                    minimum_score=minimum_score,
+                    subscription_id=subscription_id,
+                    published_from=published_from,
+                    published_to=published_to,
+                )
+            )
+            return ReferenceListResponse(
+                items=[ReferenceListItemResponse.from_read_model(item) for item in items]
+            )
         summaries = await repository.list_reference_summaries()
         return ReferenceListResponse(
             items=[ReferenceListItemResponse.from_summary(item) for item in summaries]
+        )
+
+    @router.get(
+        "/{reference_id}/reading-detail",
+        response_model=ReferenceReadingDetailResponse,
+    )
+    async def get_reading_detail(
+        reference_id: UUID,
+    ) -> ReferenceReadingDetailResponse:
+        if read_service is None:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail={"code": "reference_read_service_unavailable"},
+            )
+        try:
+            detail = await read_service.get(reference_id)
+        except KeyError as error:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail={"code": "reference_not_found"},
+            ) from error
+        subscription = detail.subscription
+        return ReferenceReadingDetailResponse(
+            **ReferenceResponse.from_domain(detail.reference).model_dump(),
+            revision=RevisionResponse.from_domain(detail.revision),
+            source_name=subscription.title if subscription else None,
+            source_feed_url=subscription.feed_url if subscription else None,
+            source_site_url=subscription.site_url if subscription else None,
+            iframe_url=detail.iframe_url,
+            analysis=(
+                AnalysisDetailResponse.from_domain(detail.analysis)
+                if detail.analysis
+                else None
+            ),
         )
 
     @router.get("/{reference_id}", response_model=ReferenceDetailResponse)
