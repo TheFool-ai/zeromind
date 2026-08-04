@@ -47,14 +47,11 @@ class IngestionService:
                 identity,
             )
             if reference is None:
-                reference = ContentReference(
-                    id=uuid.uuid4(),
+                reference = ContentReference.create(
                     subscription_id=subscription_id,
                     identity_key=identity,
                     original_url=normalized_entry_url(entry.url) or entry.url,
-                    current_revision=1,
-                    first_seen_at=fetched_at,
-                    last_seen_at=fetched_at,
+                    now=fetched_at,
                 )
                 revision = ReferenceRevision.from_entry(
                     reference_id=reference.id,
@@ -81,6 +78,10 @@ class IngestionService:
                 continue
 
             reference.current_revision += 1
+            reference.reset_analysis(
+                revision=reference.current_revision,
+                now=fetched_at,
+            )
             revision = ReferenceRevision.from_entry(
                 reference_id=reference.id,
                 number=reference.current_revision,
@@ -106,4 +107,3 @@ class IngestionService:
             unchanged=unchanged,
             events=tuple(events),
         )
-

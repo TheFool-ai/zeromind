@@ -1,8 +1,9 @@
 import hashlib
 import json
 import uuid
-from dataclasses import dataclass
-from datetime import datetime
+from dataclasses import dataclass, field
+from datetime import UTC, datetime
+from typing import Literal
 
 from zeromind.subscriptions.domain import normalize_feed_url
 
@@ -77,6 +78,38 @@ def metadata_fingerprint(entry: FeedEntry) -> str:
     return hashlib.sha256(serialized.encode()).hexdigest()
 
 
+AnalysisStatus = Literal[
+    "pending",
+    "queued",
+    "screening",
+    "resolving",
+    "analyzing",
+    "classifying",
+    "scoring",
+    "reviewing",
+    "finalizing",
+    "initial_rejected",
+    "fine_rejected",
+    "completed",
+    "failed",
+]
+PROCESSING_ANALYSIS_STATUSES = frozenset(
+    {
+        "queued",
+        "screening",
+        "resolving",
+        "analyzing",
+        "classifying",
+        "scoring",
+        "reviewing",
+        "finalizing",
+    }
+)
+TERMINAL_ANALYSIS_STATUSES = frozenset(
+    {"initial_rejected", "fine_rejected", "completed", "failed"}
+)
+
+
 @dataclass(slots=True)
 class ContentReference:
     id: uuid.UUID
@@ -86,6 +119,55 @@ class ContentReference:
     current_revision: int
     first_seen_at: datetime
     last_seen_at: datetime
+    analysis_status: AnalysisStatus = "pending"
+    analysis_status_revision: int = 1
+    analysis_workflow_run_id: uuid.UUID | None = None
+    analysis_error_code: str | None = None
+    analysis_error_message: str | None = None
+    analysis_status_updated_at: datetime = field(
+        default_factory=lambda: datetime.min.replace(tzinfo=UTC)
+    )
+    analysis_started_at: datetime | None = None
+    analysis_completed_at: datetime | None = None
+
+    def __post_init__(self) -> None:
+        if self.analysis_status_updated_at == datetime.min.replace(tzinfo=UTC):
+            self.analysis_status_updated_at = self.first_seen_at
+
+    @classmethod
+    def create(
+        cls,
+        *,
+        subscription_id: uuid.UUID,
+        identity_key: str,
+        original_url: str | None,
+        now: datetime,
+        identifier: uuid.UUID | None = None,
+    ) -> "ContentReference":
+        return cls(
+            id=identifier or uuid.uuid4(),
+            subscription_id=subscription_id,
+            identity_key=identity_key,
+            original_url=original_url,
+            current_revision=1,
+            first_seen_at=now,
+            last_seen_at=now,
+            analysis_status="pending",
+            analysis_status_revision=1,
+            analysis_status_updated_at=now,
+        )
+
+    def reset_analysis(self, *, revision: int, now: datetime) -> None:
+        if revision != self.current_revision or revision < 1:
+            raise ValueError("analysis reset revision must be current")
+        self.analysis_status = "pending"
+        self.analysis_status_revision = revision
+        self.analysis_workflow_run_id = None
+        self.analysis_error_code = None
+        self.analysis_error_message = None
+        self.analysis_status_updated_at = now
+        self.analysis_started_at = None
+        self.analysis_completed_at = None
 
 
 @dataclass(frozen=True, slots=True)

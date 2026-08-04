@@ -161,6 +161,16 @@ def _reference_to_domain(model: ContentReferenceModel) -> ContentReference:
         current_revision=model.current_revision,
         first_seen_at=_required_utc(model.first_seen_at),
         last_seen_at=_required_utc(model.last_seen_at),
+        analysis_status=model.analysis_status,  # type: ignore[arg-type]
+        analysis_status_revision=model.analysis_status_revision,
+        analysis_workflow_run_id=model.analysis_workflow_run_id,
+        analysis_error_code=model.analysis_error_code,
+        analysis_error_message=model.analysis_error_message,
+        analysis_status_updated_at=_required_utc(
+            model.analysis_status_updated_at
+        ),
+        analysis_started_at=_as_utc(model.analysis_started_at),
+        analysis_completed_at=_as_utc(model.analysis_completed_at),
     )
 
 
@@ -189,6 +199,14 @@ def _reference_model(reference: ContentReference) -> ContentReferenceModel:
         current_revision=reference.current_revision,
         first_seen_at=reference.first_seen_at,
         last_seen_at=reference.last_seen_at,
+        analysis_status=reference.analysis_status,
+        analysis_status_revision=reference.analysis_status_revision,
+        analysis_workflow_run_id=reference.analysis_workflow_run_id,
+        analysis_error_code=reference.analysis_error_code,
+        analysis_error_message=reference.analysis_error_message,
+        analysis_status_updated_at=reference.analysis_status_updated_at,
+        analysis_started_at=reference.analysis_started_at,
+        analysis_completed_at=reference.analysis_completed_at,
     )
 
 
@@ -276,6 +294,14 @@ class SqlAlchemyReferenceRepository:
             model.current_revision = reference.current_revision
             model.original_url = reference.original_url
             model.last_seen_at = reference.last_seen_at
+            model.analysis_status = reference.analysis_status
+            model.analysis_status_revision = reference.analysis_status_revision
+            model.analysis_workflow_run_id = reference.analysis_workflow_run_id
+            model.analysis_error_code = reference.analysis_error_code
+            model.analysis_error_message = reference.analysis_error_message
+            model.analysis_status_updated_at = reference.analysis_status_updated_at
+            model.analysis_started_at = reference.analysis_started_at
+            model.analysis_completed_at = reference.analysis_completed_at
             session.add(_revision_model(revision))
             session.add(
                 _outbox_model(

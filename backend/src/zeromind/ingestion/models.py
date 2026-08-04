@@ -1,11 +1,21 @@
 import uuid
 from datetime import datetime
 
-from sqlalchemy import DateTime, ForeignKey, Integer, String, Text, UniqueConstraint, Uuid
+from sqlalchemy import (
+    CheckConstraint,
+    DateTime,
+    ForeignKey,
+    Integer,
+    String,
+    Text,
+    UniqueConstraint,
+    Uuid,
+)
 from sqlalchemy.orm import Mapped, mapped_column
 
 from zeromind.shared.models import Base
 from zeromind.subscriptions.models import SubscriptionModel  # noqa: F401
+from zeromind.workflows.models import WorkflowRunModel  # noqa: F401
 
 
 class ContentReferenceModel(Base):
@@ -15,6 +25,12 @@ class ContentReferenceModel(Base):
             "subscription_id",
             "identity_key",
             name="uq_content_reference_identity",
+        ),
+        CheckConstraint(
+            "analysis_status IN ('pending', 'queued', 'screening', 'resolving', "
+            "'analyzing', 'classifying', 'scoring', 'reviewing', 'finalizing', "
+            "'initial_rejected', 'fine_rejected', 'completed', 'failed')",
+            name="ck_content_reference_analysis_status",
         ),
     )
 
@@ -29,6 +45,25 @@ class ContentReferenceModel(Base):
     current_revision: Mapped[int] = mapped_column(Integer, nullable=False)
     first_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     last_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    analysis_status: Mapped[str] = mapped_column(
+        String(32), nullable=False, index=True
+    )
+    analysis_status_revision: Mapped[int] = mapped_column(Integer, nullable=False)
+    analysis_workflow_run_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("workflow_runs.id", ondelete="SET NULL"),
+        index=True,
+    )
+    analysis_error_code: Mapped[str | None] = mapped_column(String(64))
+    analysis_error_message: Mapped[str | None] = mapped_column(Text)
+    analysis_status_updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, index=True
+    )
+    analysis_started_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True)
+    )
+    analysis_completed_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True)
+    )
 
 
 class ReferenceRevisionModel(Base):
@@ -61,4 +96,3 @@ class ReferenceRevisionModel(Base):
     published_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     updated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     observed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
-

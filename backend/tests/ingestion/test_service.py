@@ -57,6 +57,15 @@ async def test_changed_metadata_creates_exactly_one_update_revision() -> None:
         entries=(make_entry(),),
         fetched_at=FETCHED_AT,
     )
+    existing = (await repository.list_references())[0]
+    existing.analysis_status = "completed"
+    existing.analysis_workflow_run_id = UUID(
+        "22222222-2222-2222-2222-222222222222"
+    )
+    existing.analysis_error_code = "old_error"
+    existing.analysis_error_message = "old error"
+    existing.analysis_started_at = FETCHED_AT
+    existing.analysis_completed_at = FETCHED_AT
 
     changed = await service.ingest(
         subscription_id=SUBSCRIPTION_ID,
@@ -76,6 +85,12 @@ async def test_changed_metadata_creates_exactly_one_update_revision() -> None:
     assert [revision.number for revision in revisions] == [1, 2]
     assert repeated.unchanged == 1
     assert repeated.events == ()
+    assert reference.analysis_status == "pending"
+    assert reference.analysis_status_revision == 2
+    assert reference.analysis_workflow_run_id is None
+    assert reference.analysis_error_code is None
+    assert reference.analysis_started_at is None
+    assert reference.analysis_completed_at is None
 
 
 @pytest.mark.asyncio
@@ -92,4 +107,3 @@ async def test_old_unseen_entry_is_still_discovered() -> None:
     )
 
     assert result.discovered == 1
-
