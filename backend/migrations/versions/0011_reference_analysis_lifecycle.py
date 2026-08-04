@@ -1,6 +1,6 @@
 """Add the current analysis lifecycle to content references.
 
-Revision ID: 0011_reference_analysis_lifecycle
+Revision ID: 0011_reference_lifecycle
 Revises: 0010_agent_versions_and_sessions
 Create Date: 2026-08-04
 """
@@ -10,7 +10,7 @@ from collections.abc import Sequence
 import sqlalchemy as sa
 from alembic import op
 
-revision: str = "0011_reference_analysis_lifecycle"
+revision: str = "0011_reference_lifecycle"
 down_revision: str | Sequence[str] | None = "0010_agent_versions_and_sessions"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None

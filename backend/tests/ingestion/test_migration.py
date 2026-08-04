@@ -1,6 +1,21 @@
+import re
+from pathlib import Path
+
 from sqlalchemy import CheckConstraint, ForeignKeyConstraint, inspect
 
 from zeromind.ingestion.models import ContentReferenceModel
+
+MIGRATION = (
+    Path(__file__).resolve().parents[2]
+    / "migrations/versions/0011_reference_analysis_lifecycle.py"
+)
+
+
+def test_migration_revision_fits_alembic_version_column() -> None:
+    source = MIGRATION.read_text(encoding="utf-8")
+    match = re.search(r'^revision: str = "([^"]+)"$', source, re.MULTILINE)
+    assert match is not None
+    assert len(match.group(1)) <= 32
 
 
 def test_content_reference_has_analysis_lifecycle_columns() -> None:
