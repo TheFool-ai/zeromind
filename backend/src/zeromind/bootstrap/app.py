@@ -35,6 +35,11 @@ from zeromind.delivery.repository import (
 )
 from zeromind.identity.api import create_identity_router
 from zeromind.identity.tokens import InvalidToken, TokenService
+from zeromind.ingestion.analysis_queue import (
+    InMemoryReferenceAnalysisQueue,
+    ReferenceAnalysisQueue,
+    SqlAlchemyReferenceAnalysisQueue,
+)
 from zeromind.ingestion.api import create_reference_router
 from zeromind.ingestion.lifecycle import (
     InMemoryReferenceAnalysisLifecycleRepository,
@@ -62,6 +67,7 @@ from zeromind.rsshub.repository import (
 from zeromind.rsshub.service import RSSHubInstanceService
 from zeromind.shared.config import get_settings
 from zeromind.shared.database import Database, create_database
+from zeromind.shared.outbox import InMemoryOutboxRepository
 from zeromind.subscriptions.api import create_subscription_router
 from zeromind.subscriptions.repository import (
     InMemorySubscriptionRepository,
@@ -100,6 +106,7 @@ def create_app(
     subscription_repository: SubscriptionRepository | None = None,
     database: Database | None = None,
     reference_repository: ReferenceRepository | None = None,
+    reference_analysis_queue: ReferenceAnalysisQueue | None = None,
     agent_registry: AgentRegistry | None = None,
     agent_session_repository: AgentSessionRepository | None = None,
     workflow_repository: WorkflowRepository | None = None,
@@ -186,7 +193,19 @@ def create_app(
             if resolved_database is not None
             else InMemoryReferenceRepository()
         )
-    app.include_router(create_reference_router(reference_repository))
+    if reference_analysis_queue is None:
+        reference_analysis_queue = (
+            SqlAlchemyReferenceAnalysisQueue(resolved_database.sessions)
+            if resolved_database is not None
+            else InMemoryReferenceAnalysisQueue(
+                reference_repository,
+                InMemoryReferenceAnalysisLifecycleRepository(reference_repository),
+                InMemoryOutboxRepository(),
+            )
+        )
+    app.include_router(
+        create_reference_router(reference_repository, reference_analysis_queue)
+    )
     if agent_registry is None:
         agent_registry = AgentRegistry(
             SqlAlchemyAgentRepository(resolved_database.sessions)

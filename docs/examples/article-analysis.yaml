@@ -1,6 +1,6 @@
 name: 信息分析工作流
 trigger:
-  events: [reference.discovered, reference.updated, manual]
+  events: [reference.discovered, reference.updated, reference.analysis.requested, manual]
 projection: content_analysis_v1
 nodes:
   - id: reference

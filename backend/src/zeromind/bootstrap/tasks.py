@@ -11,6 +11,10 @@ from zeromind.bootstrap.runtime import build_workflow_executor
 from zeromind.content.network_policy import NetworkPolicy
 from zeromind.delivery.repository import SqlAlchemyWebhookRepository
 from zeromind.delivery.service import WebhookDeliveryService
+from zeromind.ingestion.analysis_queue import (
+    SqlAlchemyReferenceAnalysisQueue,
+    recover_reference_analyses,
+)
 from zeromind.ingestion.feed_client import FeedClient, FeedDocument, FeedNotModified
 from zeromind.ingestion.lifecycle import (
     SqlAlchemyReferenceAnalysisLifecycleRepository,
@@ -34,6 +38,7 @@ from zeromind.subscriptions.repository import (
     SqlAlchemySubscriptionRepository,
     SubscriptionRepository,
 )
+from zeromind.workflows.constants import MAIN_ANALYSIS_WORKFLOW_NAME
 from zeromind.workflows.domain import WorkflowDefinition
 from zeromind.workflows.repository import (
     SqlAlchemyWorkflowRepository,
@@ -88,17 +93,46 @@ async def dispatch_workflow_event(
     event_type: str,
     payload: dict[str, object],
 ) -> int:
+    reference_id = str(payload["reference_id"])
+    revision = int(str(payload["revision"]))
+    definitions: tuple[WorkflowDefinition, ...]
+    if event_type == "reference.analysis.requested":
+        candidates = tuple(
+            item
+            for item in await matching_workflows(workflows, event_type)
+            if item.name == MAIN_ANALYSIS_WORKFLOW_NAME
+        )
+        if len(candidates) != 1:
+            raise ValueError(
+                "expected one active information analysis workflow, "
+                f"found {len(candidates)}"
+            )
+        definitions = candidates
+    else:
+        definitions = await matching_workflows(workflows, event_type)
     completed = 0
-    for definition in await matching_workflows(workflows, event_type):
-        reference_id = str(payload["reference_id"])
-        revision = int(str(payload["revision"]))
+    for definition in definitions:
+        raw_request_id = payload.get("request_id")
+        request_id = (
+            uuid.UUID(str(raw_request_id))
+            if raw_request_id is not None
+            else uuid.uuid5(
+                uuid.NAMESPACE_URL,
+                f"{event_type}:{reference_id}:{revision}",
+            )
+        )
         key = (
-            f"{event_type}:{reference_id}:{revision}:"
-            f"{definition.id}:{definition.version}"
+            f"analysis:{reference_id}:{revision}:{request_id}:"
+            f"{definition.version}"
+            if definition.name == MAIN_ANALYSIS_WORKFLOW_NAME
+            else (
+                f"{event_type}:{reference_id}:{revision}:"
+                f"{definition.id}:{definition.version}"
+            )
         )
         run = await run_service.execute(
             definition.id,
-            trigger={"event": event_type, **payload},
+            trigger={"event": event_type, **payload, "request_id": str(request_id)},
             idempotency_key=key,
         )
         await outbox.enqueue(
@@ -294,6 +328,9 @@ async def _dispatch_outbox() -> int:
             handlers={
                 "reference.discovered": workflow_handler("reference.discovered"),
                 "reference.updated": workflow_handler("reference.updated"),
+                "reference.analysis.requested": workflow_handler(
+                    "reference.analysis.requested"
+                ),
                 "workflow.completed": deliver_webhooks,
             },
         ).dispatch()
@@ -321,3 +358,31 @@ async def _recover_stale_agent_sessions() -> int:
 @celery_app.task(name="zeromind.recover_stale_agent_sessions")  # type: ignore[untyped-decorator]
 def recover_stale_agent_sessions() -> int:
     return asyncio.run(_recover_stale_agent_sessions())
+
+
+async def _recover_stale_reference_analyses() -> dict[str, int]:
+    database = create_database()
+    now = datetime.now(UTC)
+    try:
+        references = SqlAlchemyReferenceRepository(database.sessions)
+        result = await recover_reference_analyses(
+            references,
+            SqlAlchemyReferenceAnalysisLifecycleRepository(database.sessions),
+            SqlAlchemyWorkflowRepository(database.sessions),
+            SqlAlchemyAnalysisRepository(database.sessions),
+            SqlAlchemyReferenceAnalysisQueue(database.sessions),
+            before=now - timedelta(minutes=30),
+            now=now,
+        )
+        return {
+            "repaired": result.repaired,
+            "requeued": result.requeued,
+            "skipped": result.skipped,
+        }
+    finally:
+        await database.dispose()
+
+
+@celery_app.task(name="zeromind.recover_stale_reference_analyses")  # type: ignore[untyped-decorator]
+def recover_stale_reference_analyses() -> dict[str, int]:
+    return asyncio.run(_recover_stale_reference_analyses())

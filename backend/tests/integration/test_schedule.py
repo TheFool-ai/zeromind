@@ -4,6 +4,7 @@ from uuid import UUID
 import httpx
 import pytest
 
+from zeromind.bootstrap.celery import celery_app
 from zeromind.bootstrap.tasks import (
     DueFeedScheduler,
     dispatch_workflow_event,
@@ -19,9 +20,21 @@ from zeromind.rsshub.service import RSSHubInstanceService
 from zeromind.shared.outbox import InMemoryOutboxRepository
 from zeromind.subscriptions.domain import Subscription
 from zeromind.subscriptions.repository import InMemorySubscriptionRepository
+from zeromind.workflows.constants import MAIN_ANALYSIS_WORKFLOW_NAME
 from zeromind.workflows.domain import WorkflowDefinition, WorkflowRun
 from zeromind.workflows.dsl import parse_workflow_yaml
 from zeromind.workflows.repository import InMemoryWorkflowRepository
+
+
+def test_reference_analysis_recovery_runs_on_events_queue_every_five_minutes() -> None:
+    assert celery_app.conf.task_routes[
+        "zeromind.recover_stale_reference_analyses"
+    ] == {"queue": "events"}
+    entry = celery_app.conf.beat_schedule[
+        "recover-stale-reference-analyses-every-five-minutes"
+    ]
+    assert entry["task"] == "zeromind.recover_stale_reference_analyses"
+    assert entry["schedule"] == 300.0
 
 
 @pytest.mark.asyncio
@@ -128,6 +141,9 @@ nodes: [{id: noop, type: parallel}]
 
 
 class SuccessfulRunService:
+    def __init__(self) -> None:
+        self.keys: list[str] = []
+
     async def execute(
         self,
         definition_id: UUID,
@@ -135,6 +151,7 @@ class SuccessfulRunService:
         trigger: dict[str, object],
         idempotency_key: str,
     ) -> WorkflowRun:
+        self.keys.append(idempotency_key)
         now = datetime(2026, 7, 31, 3, tzinfo=UTC)
         return WorkflowRun(
             id=UUID("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"),
@@ -234,3 +251,41 @@ nodes: [{id: noop, type: parallel}]
         )
         == ()
     )
+
+
+@pytest.mark.asyncio
+async def test_distinct_analysis_requests_create_distinct_main_workflow_keys() -> None:
+    workflows = InMemoryWorkflowRepository()
+    definition = WorkflowDefinition.create(
+        parse_workflow_yaml(
+            f"""
+name: {MAIN_ANALYSIS_WORKFLOW_NAME}
+trigger: {{events: [reference.analysis.requested]}}
+nodes: [{{id: noop, type: parallel}}]
+"""
+        )
+    )
+    definition.activate()
+    await workflows.add_definition(definition)
+    run_service = SuccessfulRunService()
+    outbox = InMemoryOutboxRepository()
+    base = {
+        "reference_id": "11111111-1111-1111-1111-111111111111",
+        "revision": 1,
+        "reason": "manual",
+    }
+
+    for request_id in (
+        "22222222-2222-2222-2222-222222222222",
+        "33333333-3333-3333-3333-333333333333",
+    ):
+        await dispatch_workflow_event(
+            workflows,
+            run_service,  # type: ignore[arg-type]
+            outbox,
+            event_type="reference.analysis.requested",
+            payload={**base, "request_id": request_id},
+        )
+
+    assert len(set(run_service.keys)) == 2
+    assert all(key.startswith("analysis:") for key in run_service.keys)

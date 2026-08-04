@@ -29,6 +29,11 @@ class OutboxEvent:
 
 
 class OutboxRepository(Protocol):
+    async def get_by_idempotency_key(
+        self,
+        idempotency_key: str,
+    ) -> OutboxEvent | None: ...
+
     async def enqueue(
         self,
         *,
@@ -63,6 +68,13 @@ class InMemoryOutboxRepository:
     def __init__(self) -> None:
         self._events: dict[uuid.UUID, OutboxEvent] = {}
         self._keys: dict[str, uuid.UUID] = {}
+
+    async def get_by_idempotency_key(
+        self,
+        idempotency_key: str,
+    ) -> OutboxEvent | None:
+        event_id = self._keys.get(idempotency_key)
+        return self._events.get(event_id) if event_id else None
 
     async def enqueue(
         self,
@@ -141,7 +153,7 @@ def _as_utc(value: datetime | None) -> datetime | None:
     return value.replace(tzinfo=UTC) if value.tzinfo is None else value.astimezone(UTC)
 
 
-def _domain(model: OutboxEventModel) -> OutboxEvent:
+def outbox_event_from_model(model: OutboxEventModel) -> OutboxEvent:
     occurred_at = _as_utc(model.occurred_at)
     available_at = _as_utc(model.available_at)
     if occurred_at is None or available_at is None:
@@ -166,6 +178,18 @@ def _domain(model: OutboxEventModel) -> OutboxEvent:
 class SqlAlchemyOutboxRepository:
     def __init__(self, sessions: async_sessionmaker[AsyncSession]) -> None:
         self._sessions = sessions
+
+    async def get_by_idempotency_key(
+        self,
+        idempotency_key: str,
+    ) -> OutboxEvent | None:
+        async with self._sessions() as session:
+            model = await session.scalar(
+                select(OutboxEventModel).where(
+                    OutboxEventModel.idempotency_key == idempotency_key
+                )
+            )
+            return outbox_event_from_model(model) if model else None
 
     async def enqueue(
         self,
@@ -204,8 +228,8 @@ class SqlAlchemyOutboxRepository:
                     )
                     if existing is None:
                         raise
-                    return _domain(existing)
-            return _domain(event)
+                    return outbox_event_from_model(existing)
+            return outbox_event_from_model(event)
 
     async def claim(
         self,
@@ -235,7 +259,7 @@ class SqlAlchemyOutboxRepository:
                 model.attempts += 1
                 model.lease_until = now + lease
             await session.flush()
-            return tuple(_domain(model) for model in claimed)
+            return tuple(outbox_event_from_model(model) for model in claimed)
 
     async def mark_dispatched(self, event_id: uuid.UUID, *, now: datetime) -> None:
         async with self._sessions() as session, session.begin():
@@ -304,4 +328,3 @@ class OutboxDispatcher:
                 await self._repository.mark_dispatched(event.id, now=current)
                 completed += 1
         return completed
-

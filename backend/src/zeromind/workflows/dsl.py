@@ -10,7 +10,12 @@ from zeromind.agents.registry import AgentRegistry
 
 MAX_WORKFLOW_BYTES = 1024 * 1024
 PATH = re.compile(r"^\$\.(?:[A-Za-z_][A-Za-z0-9_]*)(?:\.[A-Za-z_][A-Za-z0-9_]*)*$")
-ALLOWED_EVENTS = {"reference.discovered", "reference.updated", "manual"}
+ALLOWED_EVENTS = {
+    "reference.discovered",
+    "reference.updated",
+    "reference.analysis.requested",
+    "manual",
+}
 ProjectionName = Literal["content_analysis_v1"]
 PredicateOperator = Literal["gt", "gte", "lt", "lte", "eq", "ne", "in", "not_in"]
 
