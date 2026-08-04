@@ -129,3 +129,6 @@ pnpm build
 API 文档位于 `/api/docs`。生产应用默认保护 `/api/v1/*`（除登录接口），健康检查不需要令牌。
 
 更详细的升级、备份、恢复和故障处理见 [运维手册](docs/operations.md)。
+
+历史内容可通过 `scripts/backfill_reference_analysis.py` 分阶段加入“信息分析工作流”；先使用
+`--all --dry-run` 检查数量，再按运维手册执行小批量和全量 generation。

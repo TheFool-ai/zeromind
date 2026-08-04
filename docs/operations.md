@@ -42,6 +42,21 @@ docker compose exec -T postgres psql -U zeromind -d zeromind -Atc \
 - `redis`：短期任务传输；启用 AOF，但不替代 PostgreSQL。
 - `frontend`：静态控制台与同源反向代理。
 
+## 历史引用分析回填
+
+升级并注册“信息分析工作流”后，先预览范围，再以小批量验证 Provider、Agent 会话和状态流转，
+最后提交全量回填：
+
+```bash
+docker compose run --rm api python scripts/backfill_reference_analysis.py --all --dry-run
+docker compose run --rm api python scripts/backfill_reference_analysis.py --all --limit 5 --generation lifecycle-v1-smoke
+docker compose run --rm api python scripts/backfill_reference_analysis.py --all --generation lifecycle-v1
+```
+
+同一 `generation` 对相同引用修订和工作流版本生成稳定请求 ID，可安全重复执行；需要有意重新
+分析时使用新的 generation。命令只写入 outbox，不在命令进程中直接调用 Provider。执行后观察
+引用状态、失败工作流和 Agent 会话，确认小批量全部到达终态后再运行全量命令。
+
 ## RSSHub 实例
 
 在控制台的“RSSHub”页面注册一个或多个 HTTP(S) 实例。第一个启用的实例会自动成为活动
