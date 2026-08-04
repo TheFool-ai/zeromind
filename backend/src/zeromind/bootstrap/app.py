@@ -36,11 +36,16 @@ from zeromind.delivery.repository import (
 from zeromind.identity.api import create_identity_router
 from zeromind.identity.tokens import InvalidToken, TokenService
 from zeromind.ingestion.api import create_reference_router
+from zeromind.ingestion.lifecycle import (
+    InMemoryReferenceAnalysisLifecycleRepository,
+    SqlAlchemyReferenceAnalysisLifecycleRepository,
+)
 from zeromind.ingestion.repository import (
     InMemoryReferenceRepository,
     ReferenceRepository,
     SqlAlchemyReferenceRepository,
 )
+from zeromind.ingestion.workflow_observer import ReferenceAnalysisLifecycleObserver
 from zeromind.notes.api import create_note_router
 from zeromind.notes.repository import (
     InMemoryNoteRepository,
@@ -218,11 +223,22 @@ def create_app(
         analysis_repository,
     )
     if workflow_run_service is None:
+        lifecycle_repository = (
+            SqlAlchemyReferenceAnalysisLifecycleRepository(
+                resolved_database.sessions
+            )
+            if resolved_database is not None
+            else InMemoryReferenceAnalysisLifecycleRepository(reference_repository)
+        )
+        workflow_observer = ReferenceAnalysisLifecycleObserver(
+            lifecycle_repository
+        )
         workflow_executor = build_workflow_executor(
             workflow_repository=workflow_repository,
             reference_repository=reference_repository,
             agent_registry=agent_registry,
             agent_session_repository=resolved_agent_sessions,
+            observer=workflow_observer,
             settings=get_settings(),
         )
         workflow_run_service = WorkflowRunService(
@@ -236,6 +252,7 @@ def create_app(
                     or InMemorySubscriptionRepository(),
                 )
             },
+            observer=workflow_observer,
         )
     app.include_router(
         create_workflow_router(

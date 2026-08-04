@@ -16,6 +16,7 @@ from zeromind.workflows.executor import (
     NodeHandler,
     WorkflowExecutor,
 )
+from zeromind.workflows.observer import WorkflowLifecycleObserver
 from zeromind.workflows.primitives import calculate_weighted_score
 from zeromind.workflows.repository import WorkflowRepository
 
@@ -26,6 +27,7 @@ def build_workflow_executor(
     reference_repository: ReferenceRepository,
     agent_registry: AgentRegistry,
     agent_session_repository: AgentSessionRepository | None = None,
+    observer: WorkflowLifecycleObserver | None = None,
     settings: Settings,
 ) -> WorkflowExecutor:
     resolver = ContentResolver(network_policy=NetworkPolicy())
@@ -132,4 +134,8 @@ def build_workflow_executor(
         "condition": pass_through,
         "webhook": pass_through,
     }
-    return WorkflowExecutor(workflow_repository, handlers=handlers)
+    return WorkflowExecutor(
+        workflow_repository,
+        handlers=handlers,
+        observer=observer,
+    )

@@ -4,8 +4,12 @@ from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime
 
-from zeromind.workflows.domain import StepRun, WorkflowRun
+from zeromind.workflows.domain import StepRun, WorkflowDefinition, WorkflowRun
 from zeromind.workflows.dsl import PATH, NodeSpec
+from zeromind.workflows.observer import (
+    NullWorkflowLifecycleObserver,
+    WorkflowLifecycleObserver,
+)
 from zeromind.workflows.primitives import evaluate_predicate
 from zeromind.workflows.repository import WorkflowRepository
 
@@ -71,9 +75,11 @@ class WorkflowExecutor:
         repository: WorkflowRepository,
         *,
         handlers: dict[str, NodeHandler],
+        observer: WorkflowLifecycleObserver | None = None,
     ) -> None:
         self._repository = repository
         self._handlers = handlers
+        self._observer = observer or NullWorkflowLifecycleObserver()
 
     async def execute(
         self,
@@ -108,10 +114,12 @@ class WorkflowExecutor:
         nodes = {node.id: node for node in definition.spec.nodes}
         outputs: dict[str, object] = {}
         try:
+            await self._observer.run_created(definition, run)
             for layer in definition.spec.topological_layers():
                 results = await asyncio.gather(
                     *(
                         self._execute_node(
+                            definition,
                             run,
                             nodes[node_id],
                             {"trigger": trigger, "steps": outputs},
@@ -153,6 +161,7 @@ class WorkflowExecutor:
 
     async def _execute_node(
         self,
+        definition: WorkflowDefinition,
         run: WorkflowRun,
         node: NodeSpec,
         context: dict[str, object],
@@ -177,6 +186,14 @@ class WorkflowExecutor:
         )
         run.steps.append(step)
         await self._repository.add_step(step)
+        try:
+            await self._observer.step_started(definition, run, node)
+        except Exception as error:
+            step.status = "failed"
+            step.error = str(error)
+            step.completed_at = datetime.now(UTC)
+            await self._repository.save_step(step)
+            raise
         if node.type == "gate":
             try:
                 result = self._execute_gate(step, node, context)

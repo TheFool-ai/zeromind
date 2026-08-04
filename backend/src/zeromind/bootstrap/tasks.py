@@ -12,8 +12,12 @@ from zeromind.content.network_policy import NetworkPolicy
 from zeromind.delivery.repository import SqlAlchemyWebhookRepository
 from zeromind.delivery.service import WebhookDeliveryService
 from zeromind.ingestion.feed_client import FeedClient, FeedDocument, FeedNotModified
+from zeromind.ingestion.lifecycle import (
+    SqlAlchemyReferenceAnalysisLifecycleRepository,
+)
 from zeromind.ingestion.repository import SqlAlchemyReferenceRepository
 from zeromind.ingestion.service import IngestionService
+from zeromind.ingestion.workflow_observer import ReferenceAnalysisLifecycleObserver
 from zeromind.rsshub.credentials import CredentialCipher
 from zeromind.rsshub.repository import SqlAlchemyRSSHubInstanceRepository
 from zeromind.rsshub.resolver import RSSHubResolver
@@ -237,11 +241,15 @@ async def _dispatch_outbox() -> int:
     subscriptions = SqlAlchemySubscriptionRepository(database.sessions)
     analyses = SqlAlchemyAnalysisRepository(database.sessions)
     webhooks = SqlAlchemyWebhookRepository(database.sessions)
+    workflow_observer = ReferenceAnalysisLifecycleObserver(
+        SqlAlchemyReferenceAnalysisLifecycleRepository(database.sessions)
+    )
     executor = build_workflow_executor(
         workflow_repository=workflows,
         reference_repository=references,
         agent_registry=agents,
         agent_session_repository=agent_sessions,
+        observer=workflow_observer,
         settings=settings,
     )
     run_service = WorkflowRunService(
@@ -254,6 +262,7 @@ async def _dispatch_outbox() -> int:
                 subscriptions,
             )
         },
+        observer=workflow_observer,
     )
 
     def workflow_handler(event_type: str) -> EventHandler:
