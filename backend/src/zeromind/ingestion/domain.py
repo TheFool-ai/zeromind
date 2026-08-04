@@ -93,6 +93,23 @@ AnalysisStatus = Literal[
     "completed",
     "failed",
 ]
+ANALYSIS_STATUSES = frozenset(
+    {
+        "pending",
+        "queued",
+        "screening",
+        "resolving",
+        "analyzing",
+        "classifying",
+        "scoring",
+        "reviewing",
+        "finalizing",
+        "initial_rejected",
+        "fine_rejected",
+        "completed",
+        "failed",
+    }
+)
 PROCESSING_ANALYSIS_STATUSES = frozenset(
     {
         "queued",
