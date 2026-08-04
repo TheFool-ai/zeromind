@@ -342,7 +342,7 @@ async def _dispatch_outbox() -> int:
                 ),
                 "workflow.completed": deliver_webhooks,
             },
-        ).dispatch()
+        ).dispatch(limit=1)
     finally:
         await database.dispose()
 
