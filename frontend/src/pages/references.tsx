@@ -12,6 +12,7 @@ import {
   referenceStatusGroup,
   type ReferenceStatusGroup
 } from "../components";
+import {plainText} from "../text";
 
 const filters: Array<[ReferenceStatusGroup, string]> = [
   ["all", "全部"],
@@ -77,7 +78,7 @@ export function ReferencesPage() {
                 </p>
                 <h2>{item.title ?? "未命名内容"}</h2>
                 <p className="reference-summary">
-                  {item.analysis?.one_sentence_summary ?? item.summary ?? "暂无摘要"}
+                  {plainText(item.analysis?.one_sentence_summary ?? item.summary, "暂无摘要")}
                 </p>
                 {item.analysis ? (
                   <div className="reference-analysis-preview">

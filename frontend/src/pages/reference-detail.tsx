@@ -11,6 +11,7 @@ import {
   ReferenceStatus,
   referenceStatusLabels
 } from "../components";
+import {plainText} from "../text";
 
 const stages: ReferenceAnalysisStatus[] = [
   "pending", "queued", "screening", "resolving", "analyzing",
@@ -61,7 +62,10 @@ export function ReferenceDetailPage() {
             </div>
             <h1>{value.revision.title}</h1>
             <p className="detail-deck">
-              {analysis?.one_sentence_summary ?? value.revision.summary ?? "暂无内容摘要。"}
+              {plainText(
+                analysis?.one_sentence_summary ?? value.revision.summary,
+                "暂无内容摘要。"
+              )}
             </p>
           </div>
           {analysis?.total_score !== null && analysis?.total_score !== undefined ? (
@@ -102,7 +106,7 @@ export function ReferenceDetailPage() {
             <p>部分网站禁止被嵌入。你仍可在新窗口阅读；这里保留 RSS 元数据作为回退。</p>
             <dl>
               <div><dt>标题</dt><dd>{value.revision.title}</dd></div>
-              <div><dt>摘要</dt><dd>{value.revision.summary ?? "—"}</dd></div>
+              <div><dt>摘要</dt><dd>{plainText(value.revision.summary)}</dd></div>
               <div><dt>作者</dt><dd>{value.revision.author ?? "—"}</dd></div>
             </dl>
           </div>

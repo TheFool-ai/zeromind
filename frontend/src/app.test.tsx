@@ -122,7 +122,7 @@ const referenceDetail = {
     fingerprint: "fingerprint",
     url: analysisCard.original_url,
     title: analysisCard.title,
-    summary: "RSS 元数据摘要",
+    summary: '<p>RSS <strong>元数据摘要</strong></p><img src="preview.jpg">',
     author: analysisCard.author,
     published_at: analysisCard.published_at,
     updated_at: null,
@@ -518,7 +518,7 @@ describe("ZeroMind administration", () => {
       analysis_status_updated_at: analysisCard.observed_at,
       analysis_started_at: null,
       analysis_completed_at: null,
-      summary: "RSS summary",
+      summary: '<p>RSS <strong>summary</strong></p><img src="preview.jpg">',
       author: "Ada",
       source_name: "Example Engineering",
       source_feed_url: analysisCard.source_feed_url,
@@ -540,6 +540,8 @@ describe("ZeroMind administration", () => {
     render(<App />);
 
     expect(await screen.findByText("Pending title")).toBeVisible();
+    expect(screen.getAllByText("RSS summary")).toHaveLength(4);
+    expect(screen.queryByText(/<strong>/)).not.toBeInTheDocument();
     expect(screen.getByText("核心分析")).toBeVisible();
     expect(screen.getByText("分析完成")).toBeVisible();
     expect(screen.getByText("细筛拒绝")).toBeVisible();
@@ -568,6 +570,8 @@ describe("ZeroMind administration", () => {
     expect(screen.getByText("分析完成")).toBeVisible();
     expect(screen.getByLabelText("总评分 86")).toBeVisible();
     expect(screen.getByText("一句话总结")).toBeVisible();
+    expect(screen.getByText("RSS 元数据摘要")).toBeVisible();
+    expect(screen.queryByText(/<strong>/)).not.toBeInTheDocument();
     expect(screen.getByText(analysisDetail.summary)).toBeVisible();
     expect(screen.getByText("确定性门禁让筛选结果更可解释。")).toBeVisible();
     expect(screen.getByText(/让模型负责判断/)).toBeVisible();
