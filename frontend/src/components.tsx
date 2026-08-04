@@ -2,8 +2,42 @@ import type {PropsWithChildren, ReactNode} from "react";
 
 import type {
   AnalysisDecision,
-  GeneratedAnalysisStatus
+  GeneratedAnalysisStatus,
+  ReferenceAnalysisStatus
 } from "./api/client";
+
+export const referenceStatusLabels: Record<ReferenceAnalysisStatus, string> = {
+  pending: "待分析",
+  queued: "已排队",
+  screening: "元数据初筛",
+  resolving: "读取原文",
+  analyzing: "核心分析",
+  classifying: "分类标注",
+  scoring: "质量评分",
+  reviewing: "审核反思",
+  finalizing: "最终优化",
+  initial_rejected: "初筛拒绝",
+  fine_rejected: "细筛拒绝",
+  completed: "分析完成",
+  failed: "分析失败"
+};
+
+export type ReferenceStatusGroup =
+  | "all" | "pending" | "processing" | "completed" | "rejected" | "failed";
+
+export function referenceStatusGroup(status: ReferenceAnalysisStatus): ReferenceStatusGroup {
+  if (status === "pending") return "pending";
+  if (status === "completed") return "completed";
+  if (status === "initial_rejected" || status === "fine_rejected") return "rejected";
+  if (status === "failed") return "failed";
+  return "processing";
+}
+
+export function ReferenceStatus({value}: {value: ReferenceAnalysisStatus}) {
+  const group = referenceStatusGroup(value);
+  const tone = group === "completed" ? "good" : group === "failed" ? "bad" : "neutral";
+  return <span className={`status ${tone}`}>{referenceStatusLabels[value]}</span>;
+}
 
 export const analysisStatusLabels = {
   initial_rejected: "初筛拒绝",

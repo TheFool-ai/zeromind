@@ -87,14 +87,66 @@ export type RSSHubInstance = {
   updated_at: string;
 };
 
+export type ReferenceAnalysisStatus =
+  | "pending"
+  | "queued"
+  | "screening"
+  | "resolving"
+  | "analyzing"
+  | "classifying"
+  | "scoring"
+  | "reviewing"
+  | "finalizing"
+  | "initial_rejected"
+  | "fine_rejected"
+  | "completed"
+  | "failed";
+
 export type Reference = {
   id: string;
   subscription_id: string;
+  identity_key: string;
   original_url: string | null;
   current_revision: number;
   published_at: string | null;
   first_seen_at: string;
   last_seen_at: string;
+  analysis_status: ReferenceAnalysisStatus;
+  analysis_status_revision: number;
+  analysis_workflow_run_id: string | null;
+  analysis_error_code: string | null;
+  analysis_error_message: string | null;
+  analysis_status_updated_at: string;
+  analysis_started_at: string | null;
+  analysis_completed_at: string | null;
+  title: string | null;
+  summary: string | null;
+  author: string | null;
+  source_name: string | null;
+  source_feed_url: string | null;
+  analysis: AnalysisCard | null;
+};
+
+export type ReferenceRevision = {
+  id: string;
+  number: number;
+  fingerprint: string;
+  url: string | null;
+  title: string;
+  summary: string | null;
+  author: string | null;
+  published_at: string | null;
+  updated_at: string | null;
+  observed_at: string;
+};
+
+export type ReferenceReadingDetail = Omit<Reference, "published_at" | "analysis"> & {
+  revision: ReferenceRevision;
+  source_name: string | null;
+  source_feed_url: string | null;
+  source_site_url: string | null;
+  iframe_url: string | null;
+  analysis: AnalysisDetail | null;
 };
 
 export type AnalysisDecision = "qualified" | "rejected";
