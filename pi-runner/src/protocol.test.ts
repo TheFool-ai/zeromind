@@ -4,6 +4,7 @@ import {
   buildPrompt,
   buildSessionConfig,
   parseExecuteRequest,
+  parseModelOutput,
 } from "./protocol.js";
 
 const valid = {
@@ -52,5 +53,19 @@ describe("Pi session isolation", () => {
     expect(prompt).toContain('"title":"Article"');
     expect(prompt).toContain('"summary"');
     expect(prompt).not.toContain("secret");
+  });
+});
+
+describe("parseModelOutput", () => {
+  it("accepts a JSON code block after provider reasoning text", () => {
+    expect(
+      parseModelOutput('Analysis complete.\n```json\n{"summary":"Useful"}\n```'),
+    ).toEqual({ summary: "Useful" });
+  });
+
+  it("rejects prose with an unmarked JSON fragment", () => {
+    expect(() =>
+      parseModelOutput('The answer is {"summary":"Useful"}.'),
+    ).toThrow();
   });
 });

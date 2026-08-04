@@ -111,9 +111,8 @@ export function buildPrompt(request: ExecuteRequest): string {
 
 export function parseModelOutput(text: string): Record<string, unknown> {
   const trimmed = text.trim();
-  const withoutFence = trimmed
-    .replace(/^```(?:json)?\s*/i, "")
-    .replace(/\s*```$/, "");
-  const value: unknown = JSON.parse(withoutFence);
+  const fenced = /```(?:json)?\s*([\s\S]*?)\s*```/i.exec(trimmed);
+  const candidate = fenced?.[1] ?? trimmed;
+  const value: unknown = JSON.parse(candidate);
   return object(value, "model output");
 }
