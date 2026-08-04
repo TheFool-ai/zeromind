@@ -104,6 +104,15 @@ class AgentGateway:
                 )
                 await self._sessions.save(trace)  # type: ignore[union-attr]
             raise
+        except Exception as error:
+            if trace is not None:
+                trace.fail(
+                    status="provider_failed",
+                    error_code="provider_configuration_error",
+                    error_message=bounded_error(str(error)),
+                )
+                await self._sessions.save(trace)  # type: ignore[union-attr]
+            raise
         try:
             Draft202012Validator(definition.output_schema).validate(result.output)
             validate_agent_semantics(definition.capabilities, result.output)

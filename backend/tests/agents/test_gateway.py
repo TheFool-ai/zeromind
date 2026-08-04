@@ -127,3 +127,25 @@ async def test_gateway_sanitizes_transient_document_in_session(
     recorded = (await sessions.list())[0]
     assert "ARTICLE BODY" not in str(recorded.sanitized_input)
     assert recorded.document_sha256 is not None
+
+
+@pytest.mark.asyncio
+async def test_gateway_records_missing_provider_credential_as_terminal(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    value, definition = await registry(monkeypatch)
+    monkeypatch.delenv("OPENAI_API_KEY")
+    sessions = InMemoryAgentSessionRepository()
+    gateway = AgentGateway(value, StubPiClient({"summary": "Done"}), sessions)
+
+    with pytest.raises(ValueError, match="is not configured"):
+        await gateway.execute(
+            definition.id,
+            {"title": "Article"},
+            context=context(),
+        )
+
+    recorded = (await sessions.list())[0]
+    assert recorded.status == "provider_failed"
+    assert recorded.error_code == "provider_configuration_error"
+    assert recorded.completed_at is not None

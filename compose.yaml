@@ -17,6 +17,9 @@ x-backend: &backend
     ZEROMIND_ADMIN_PASSWORD: ${ZEROMIND_ADMIN_PASSWORD:-change-me}
     ZEROMIND_TOKEN_SECRET: ${ZEROMIND_TOKEN_SECRET:-replace-with-a-random-secret}
     ZEROMIND_CREDENTIAL_SECRET: ${ZEROMIND_CREDENTIAL_SECRET:-replace-with-another-random-secret}
+    GLM_API_KEY: ${GLM_API_KEY:-}
+    OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+    ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
   restart: unless-stopped
 
 services:
