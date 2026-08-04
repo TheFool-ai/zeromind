@@ -254,6 +254,61 @@ nodes: [{id: noop, type: parallel}]
 
 
 @pytest.mark.asyncio
+async def test_worker_consumes_event_for_persisted_terminal_failure() -> None:
+    workflows = InMemoryWorkflowRepository()
+    definition = WorkflowDefinition.create(
+        parse_workflow_yaml(
+            """
+name: terminal-failure
+trigger: {events: [reference.discovered]}
+nodes: [{id: noop, type: parallel}]
+"""
+        )
+    )
+    definition.activate()
+    await workflows.add_definition(definition)
+    reference_id = "11111111-1111-1111-1111-111111111111"
+    key = (
+        f"reference.discovered:{reference_id}:1:"
+        f"{definition.id}:{definition.version}"
+    )
+    now = datetime(2026, 7, 31, 3, tzinfo=UTC)
+    await workflows.add_run(
+        WorkflowRun(
+            id=UUID("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb"),
+            definition_id=definition.id,
+            definition_version=definition.version,
+            idempotency_key=key,
+            trigger={},
+            status="failed",
+            output=None,
+            error="provider_failed",
+            started_at=now,
+            completed_at=now,
+        )
+    )
+    outbox = InMemoryOutboxRepository()
+
+    completed = await dispatch_workflow_event(
+        workflows,
+        FailedProjectionRunService(),  # type: ignore[arg-type]
+        outbox,
+        event_type="reference.discovered",
+        payload={"reference_id": reference_id, "revision": 1},
+    )
+
+    assert completed == 0
+    assert (
+        await outbox.claim(
+            now=now,
+            limit=10,
+            lease=timedelta(minutes=1),
+        )
+        == ()
+    )
+
+
+@pytest.mark.asyncio
 async def test_distinct_analysis_requests_create_distinct_main_workflow_keys() -> None:
     workflows = InMemoryWorkflowRepository()
     definition = WorkflowDefinition.create(

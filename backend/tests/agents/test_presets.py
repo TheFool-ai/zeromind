@@ -34,8 +34,8 @@ async def test_six_presets_have_strict_valid_schemas_and_form_valid_dsl() -> Non
     registry = AgentRegistry(repository)
     provider = ProviderProfile.create(
         name="GLM",
-        provider="glm",
-        model="GLM-5.2",
+        provider="zai",
+        model="glm-5.2",
         api_key_env="GLM_API_KEY",
         identifier=UUID("00000000-0000-0000-0000-000000000100"),
     )

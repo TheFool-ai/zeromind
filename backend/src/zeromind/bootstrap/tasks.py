@@ -130,11 +130,20 @@ async def dispatch_workflow_event(
                 f"{definition.id}:{definition.version}"
             )
         )
-        run = await run_service.execute(
-            definition.id,
-            trigger={"event": event_type, **payload, "request_id": str(request_id)},
-            idempotency_key=key,
-        )
+        try:
+            run = await run_service.execute(
+                definition.id,
+                trigger={"event": event_type, **payload, "request_id": str(request_id)},
+                idempotency_key=key,
+            )
+        except Exception:
+            failed = await workflows.find_run(definition.id, key)
+            if failed is None or failed.status != "failed":
+                raise
+            # A persisted workflow failure is terminal for this request. Retrying
+            # the same outbox event can only recover the same idempotent failed
+            # run; an explicit retry creates a new request ID instead.
+            continue
         await outbox.enqueue(
             event_type="workflow.completed",
             aggregate_type="workflow_run",
