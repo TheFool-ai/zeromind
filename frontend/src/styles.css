@@ -235,6 +235,7 @@ pre { background: var(--ink); color: #e9e7df; padding: 1rem; font-size: .7rem; o
   font-size: clamp(1.3rem, 2vw, 1.65rem);
   line-height: 1.22;
   letter-spacing: -.025em;
+  overflow-wrap: anywhere;
 }
 .analysis-card h2 a { text-decoration: none; }
 .analysis-card h2 a:hover { color: var(--accent); }
