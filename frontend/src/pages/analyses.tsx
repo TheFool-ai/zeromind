@@ -1,4 +1,4 @@
-import {useInfiniteQuery, useQuery} from "@tanstack/react-query";
+import {keepPreviousData, useInfiniteQuery, useQuery} from "@tanstack/react-query";
 import {useMemo, useState} from "react";
 import {Link} from "react-router-dom";
 
@@ -21,6 +21,8 @@ type AnalysisPage = {
   next_cursor: string | null;
 };
 
+type AnalysisSort = "score" | "time";
+
 function queryPath(
   filters: {
     effectiveDecision: AnalysisDecision;
@@ -29,11 +31,13 @@ function queryPath(
     subscriptionId: string;
     from: string;
     to: string;
+    sort: AnalysisSort;
   },
   cursor: string | null
 ): string {
   const query = new URLSearchParams({
-    effective_decision: filters.effectiveDecision
+    effective_decision: filters.effectiveDecision,
+    sort: filters.sort
   });
   if (filters.minimumScore) {
     query.set("minimum_score", filters.minimumScore);
@@ -118,6 +122,7 @@ export function AnalysesPage() {
   const [subscriptionId, setSubscriptionId] = useState("");
   const [from, setFrom] = useState("");
   const [to, setTo] = useState("");
+  const [sort, setSort] = useState<AnalysisSort>("score");
   const filters = useMemo(
     () => ({
       effectiveDecision,
@@ -125,7 +130,8 @@ export function AnalysesPage() {
       category,
       subscriptionId,
       from,
-      to
+      to,
+      sort
     }),
     [
       effectiveDecision,
@@ -133,7 +139,8 @@ export function AnalysesPage() {
       category,
       subscriptionId,
       from,
-      to
+      to,
+      sort
     ]
   );
   const subscriptions = useQuery({
@@ -149,6 +156,7 @@ export function AnalysesPage() {
       ),
     initialPageParam: null as string | null,
     getNextPageParam: (lastPage) => lastPage.next_cursor ?? undefined,
+    placeholderData: keepPreviousData,
     retry: false
   });
   const items = analyses.data?.pages.flatMap((page) => page.items) ?? [];
@@ -161,6 +169,24 @@ export function AnalysesPage() {
         description="用初筛、细筛和确定性评分过滤噪声，只保留值得投入注意力的内容。"
       />
       <section className="analysis-filters" aria-label="信息流筛选">
+        <div className="segmented analysis-sort-filter" aria-label="信息流排序">
+          <button
+            type="button"
+            className={sort === "score" ? "active" : ""}
+            aria-pressed={sort === "score"}
+            onClick={() => setSort("score")}
+          >
+            评分优先
+          </button>
+          <button
+            type="button"
+            className={sort === "time" ? "active" : ""}
+            aria-pressed={sort === "time"}
+            onClick={() => setSort("time")}
+          >
+            时间优先
+          </button>
+        </div>
         <div className="segmented analysis-decision-filter">
           <button
             type="button"

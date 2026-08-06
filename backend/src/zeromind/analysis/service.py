@@ -5,7 +5,7 @@ from dataclasses import dataclass, replace
 from datetime import UTC, datetime
 
 from zeromind.analysis.domain import ContentAnalysis, EffectiveDecision
-from zeromind.analysis.repository import AnalysisQuery, AnalysisRepository
+from zeromind.analysis.repository import AnalysisQuery, AnalysisRepository, AnalysisSort
 
 
 @dataclass(frozen=True, slots=True)
@@ -15,6 +15,7 @@ class AnalysisPage:
 
 
 def encode_cursor(
+    sort: AnalysisSort,
     sort_score: int,
     content_time: datetime,
     analysis_id: uuid.UUID,
@@ -25,13 +26,23 @@ def encode_cursor(
         else content_time.astimezone(UTC)
     )
     payload = json.dumps(
-        [sort_score, normalized_time.isoformat(), str(analysis_id)],
+        {
+            "v": 1,
+            "sort": sort,
+            "score": sort_score,
+            "time": normalized_time.isoformat(),
+            "id": str(analysis_id),
+        },
         separators=(",", ":"),
     ).encode()
     return base64.urlsafe_b64encode(payload).decode().rstrip("=")
 
 
-def decode_cursor(value: str) -> tuple[int, datetime, uuid.UUID]:
+def decode_cursor(
+    value: str,
+    *,
+    expected_sort: AnalysisSort,
+) -> tuple[int, datetime, uuid.UUID]:
     try:
         padding = "=" * (-len(value) % 4)
         decoded = base64.b64decode(
@@ -40,9 +51,13 @@ def decode_cursor(value: str) -> tuple[int, datetime, uuid.UUID]:
             validate=True,
         )
         payload = json.loads(decoded)
-        if not isinstance(payload, list) or len(payload) != 3:
-            raise ValueError("cursor payload must contain three values")
-        raw_score, raw_time, raw_id = payload
+        if not isinstance(payload, dict) or payload.get("v") != 1:
+            raise ValueError("cursor payload version is invalid")
+        if payload.get("sort") != expected_sort:
+            raise ValueError("cursor sort does not match query")
+        raw_score = payload.get("score")
+        raw_time = payload.get("time")
+        raw_id = payload.get("id")
         if (
             isinstance(raw_score, bool)
             or not isinstance(raw_score, int)
@@ -82,6 +97,7 @@ class AnalysisService:
         if len(fetched) > query.limit and items:
             last = items[-1]
             next_cursor = encode_cursor(
+                query.sort,
                 last.total_score if last.total_score is not None else -1,
                 _content_time(last),
                 last.id,

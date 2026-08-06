@@ -2,7 +2,7 @@ import copy
 import uuid
 from dataclasses import dataclass
 from datetime import UTC, datetime
-from typing import Protocol, cast
+from typing import Literal, Protocol, cast
 
 from sqlalchemy import and_, func, or_, select
 from sqlalchemy.exc import IntegrityError
@@ -23,6 +23,8 @@ from zeromind.analysis.models import (
     ContentAnalysisTagModel,
 )
 
+AnalysisSort = Literal["score", "time"]
+
 
 @dataclass(frozen=True, slots=True)
 class AnalysisQuery:
@@ -35,6 +37,7 @@ class AnalysisQuery:
     reference_id: uuid.UUID | None = None
     observed_from: datetime | None = None
     observed_to: datetime | None = None
+    sort: AnalysisSort = "score"
     limit: int = 20
     cursor: tuple[int, datetime, uuid.UUID] | None = None
 
@@ -43,6 +46,8 @@ class AnalysisQuery:
             raise ValueError("analysis query limit must be from 1 to 101")
         if self.minimum_score is not None and not 0 <= self.minimum_score <= 100:
             raise ValueError("minimum score must be from 0 to 100")
+        if self.sort not in ("score", "time"):
+            raise ValueError("analysis sort must be score or time")
 
 
 class AnalysisRepository(Protocol):
@@ -75,10 +80,22 @@ def _content_time(analysis: ContentAnalysis) -> datetime:
     return analysis.published_at or analysis.observed_at
 
 
-def _sort_tuple(analysis: ContentAnalysis) -> tuple[int, datetime, uuid.UUID]:
+def _score_sort_tuple(
+    analysis: ContentAnalysis,
+) -> tuple[int, datetime, uuid.UUID]:
     return (
         analysis.total_score if analysis.total_score is not None else -1,
         _content_time(analysis),
+        analysis.id,
+    )
+
+
+def _time_sort_tuple(
+    analysis: ContentAnalysis,
+) -> tuple[datetime, int, uuid.UUID]:
+    return (
+        _content_time(analysis),
+        analysis.total_score if analysis.total_score is not None else -1,
         analysis.id,
     )
 
@@ -149,12 +166,19 @@ class InMemoryAnalysisRepository:
             for analysis in self._analyses.values()
             if self._matches(analysis, query)
         ]
-        items.sort(key=_sort_tuple, reverse=True)
+        sort_key = _score_sort_tuple if query.sort == "score" else _time_sort_tuple
+        items.sort(key=sort_key, reverse=True)
         if query.cursor is not None:
+            cursor_score, cursor_time, cursor_id = query.cursor
+            cursor_key = (
+                (cursor_score, cursor_time, cursor_id)
+                if query.sort == "score"
+                else (cursor_time, cursor_score, cursor_id)
+            )
             items = [
                 analysis
                 for analysis in items
-                if _sort_tuple(analysis) < query.cursor
+                if sort_key(analysis) < cursor_key
             ]
         return tuple(self._copy(item) for item in items[: query.limit])
 
@@ -420,8 +444,8 @@ class SqlAlchemyAnalysisRepository:
             )
         if query.cursor is not None:
             cursor_score, cursor_time, cursor_id = query.cursor
-            statement = statement.where(
-                or_(
+            if query.sort == "score":
+                cursor_predicate = or_(
                     score < cursor_score,
                     and_(score == cursor_score, content_time < cursor_time),
                     and_(
@@ -430,12 +454,23 @@ class SqlAlchemyAnalysisRepository:
                         ContentAnalysisModel.id < cursor_id,
                     ),
                 )
-            )
-        statement = statement.order_by(
-            score.desc(),
-            content_time.desc(),
-            ContentAnalysisModel.id.desc(),
-        ).limit(query.limit)
+            else:
+                cursor_predicate = or_(
+                    content_time < cursor_time,
+                    and_(content_time == cursor_time, score < cursor_score),
+                    and_(
+                        content_time == cursor_time,
+                        score == cursor_score,
+                        ContentAnalysisModel.id < cursor_id,
+                    ),
+                )
+            statement = statement.where(cursor_predicate)
+        ordering = (
+            (score.desc(), content_time.desc(), ContentAnalysisModel.id.desc())
+            if query.sort == "score"
+            else (content_time.desc(), score.desc(), ContentAnalysisModel.id.desc())
+        )
+        statement = statement.order_by(*ordering).limit(query.limit)
         async with self._sessions() as session:
             models = tuple(await session.scalars(statement))
             return tuple(

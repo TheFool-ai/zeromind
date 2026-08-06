@@ -100,12 +100,23 @@ const analysisDetail = {
   created_at: "2026-07-31T05:00:00Z"
 } as const;
 
-const referenceDetail = {
+const referenceReaderContent = {
+  source_url: analysisCard.original_url,
+  final_url: analysisCard.original_url,
+  canonical_url: analysisCard.original_url,
+  title: analysisCard.title,
+  author: analysisCard.author,
+  language: "en",
+  text: "This is the transient original article body.\n\nIt is rendered safely inside ZeroMind."
+} as const;
+
+const referenceListItem = {
   id: analysisCard.reference_id,
   subscription_id: analysisCard.subscription_id,
   identity_key: "guid:reading-detail",
   original_url: analysisCard.original_url,
   current_revision: 3,
+  published_at: analysisCard.published_at,
   first_seen_at: "2026-07-30T00:00:00Z",
   last_seen_at: "2026-07-31T00:00:00Z",
   analysis_status: "completed",
@@ -116,33 +127,50 @@ const referenceDetail = {
   analysis_status_updated_at: "2026-07-31T05:00:00Z",
   analysis_started_at: "2026-07-31T04:00:00Z",
   analysis_completed_at: "2026-07-31T05:00:00Z",
-  revision: {
-    id: "88888888-8888-8888-8888-888888888888",
-    number: 3,
-    fingerprint: "fingerprint",
-    url: analysisCard.original_url,
-    title: analysisCard.title,
-    summary: '<p>RSS <strong>元数据摘要</strong></p><img src="preview.jpg">',
-    author: analysisCard.author,
-    published_at: analysisCard.published_at,
-    updated_at: null,
-    observed_at: analysisCard.observed_at
-  },
+  title: analysisCard.title,
+  summary: '<p>RSS <strong>元数据摘要</strong></p>',
+  author: analysisCard.author,
   source_name: analysisCard.source_name,
   source_feed_url: analysisCard.source_feed_url,
-  source_site_url: "https://example.com",
-  iframe_url: analysisCard.original_url,
-  analysis: analysisDetail
+  analysis: analysisCard
 } as const;
 
-const referenceReaderContent = {
-  source_url: analysisCard.original_url,
-  final_url: analysisCard.original_url,
-  canonical_url: analysisCard.original_url,
-  title: analysisCard.title,
-  author: analysisCard.author,
-  language: "en",
-  text: "This is the transient original article body.\n\nIt is rendered safely inside ZeroMind."
+const workflowRun = {
+  id: analysisDetail.workflow_run_id,
+  definition_id: analysisDetail.workflow_definition_id,
+  status: "completed",
+  output: {result: "qualified"},
+  error: null,
+  started_at: "2026-07-31T04:00:00Z",
+  completed_at: "2026-07-31T05:00:00Z",
+  steps: [
+    {
+      id: "99999999-9999-9999-9999-999999999999",
+      node_id: "quality_score",
+      status: "completed",
+      attempts: 1,
+      error: null
+    }
+  ]
+} as const;
+
+const agentSession = {
+  id: "12121212-1212-1212-1212-121212121212",
+  workflow_run_id: workflowRun.id,
+  step_run_id: workflowRun.steps[0].id,
+  agent_id: "55555555-5555-5555-5555-555555555555",
+  agent_version_id: "56565656-5656-5656-5656-565656565656",
+  attempt: 1,
+  provider: "openai",
+  model: "gpt-5-mini",
+  status: "completed",
+  sanitized_input: {title: analysisCard.title},
+  output: {score: 86},
+  usage: {input_tokens: 120},
+  error_code: null,
+  error_message: null,
+  started_at: "2026-07-31T04:30:00Z",
+  completed_at: "2026-07-31T04:31:00Z"
 } as const;
 
 describe("ZeroMind administration", () => {
@@ -484,127 +512,73 @@ describe("ZeroMind administration", () => {
     expect(localStorage.getItem("zeromind_token")).toBeNull();
   });
 
-  it("shows publication time for content references", async () => {
+  it("combines pending references, linked runs, and unlinked runs in one ledger", async () => {
     localStorage.setItem("zeromind_token", "token");
-    window.history.replaceState({}, "", "/references");
-    vi.spyOn(globalThis, "fetch").mockResolvedValue(
-      response({
-        items: [
-          {
-            id: "11111111-1111-1111-1111-111111111111",
-            subscription_id: "22222222-2222-2222-2222-222222222222",
-            identity_key: "guid:42",
-            original_url: "https://example.com/post",
-            current_revision: 1,
-            published_at: "2026-07-29T00:00:00Z",
-            first_seen_at: "2030-01-01T00:00:00Z",
-            last_seen_at: "2030-01-01T00:00:00Z"
-          }
-        ]
-      })
-    );
-
-    render(<App />);
-
-    expect(await screen.findByText(/2026年7月29日/)).toBeVisible();
-    expect(screen.queryByText(/2030年1月1日/)).not.toBeInTheDocument();
-  });
-
-  it("shows lifecycle labels, analysis preview, failure and retry controls", async () => {
-    localStorage.setItem("zeromind_token", "token");
-    window.history.replaceState({}, "", "/references");
-    const base = {
-      subscription_id: analysisCard.subscription_id,
-      identity_key: "guid:item",
-      original_url: analysisCard.original_url,
-      current_revision: 1,
-      published_at: analysisCard.published_at,
-      first_seen_at: analysisCard.observed_at,
-      last_seen_at: analysisCard.observed_at,
-      analysis_status_revision: 1,
+    window.history.replaceState({}, "", "/runs");
+    const pending = {
+      ...referenceListItem,
+      id: "10000000-0000-0000-0000-000000000001",
+      title: "Pending title",
+      analysis_status: "pending",
       analysis_workflow_run_id: null,
-      analysis_error_code: null,
-      analysis_error_message: null,
-      analysis_status_updated_at: analysisCard.observed_at,
       analysis_started_at: null,
       analysis_completed_at: null,
-      summary: '<p>RSS <strong>summary</strong></p><img src="preview.jpg">',
-      author: "Ada",
-      source_name: "Example Engineering",
-      source_feed_url: analysisCard.source_feed_url,
       analysis: null
     };
-    const items = [
-      {...base, id: "10000000-0000-0000-0000-000000000001", title: "Pending title", analysis_status: "pending"},
-      {...base, id: "10000000-0000-0000-0000-000000000002", title: "Analyzing title", analysis_status: "analyzing"},
-      {...base, id: "10000000-0000-0000-0000-000000000003", title: "Completed title", analysis_status: "completed", analysis: analysisCard},
-      {...base, id: "10000000-0000-0000-0000-000000000004", title: "Rejected title", analysis_status: "fine_rejected"},
-      {...base, id: "10000000-0000-0000-0000-000000000005", title: "Failed title", analysis_status: "failed", analysis_error_message: "Provider unavailable"}
-    ];
-    vi.spyOn(globalThis, "fetch").mockImplementation(async (_input, init) =>
-      init?.method === "POST"
-        ? response({analysis_status: "pending"}, 202)
-        : response({items})
-    );
+    const unlinked = {
+      ...workflowRun,
+      id: "45454545-4545-4545-4545-454545454545"
+    };
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
+      const url = String(input);
+      if (url.endsWith("/references")) return response({items: [pending, referenceListItem]});
+      if (url.endsWith("/workflow-runs")) return response({items: [workflowRun, unlinked]});
+      return response({detail: {code: "not_found"}}, 404);
+    });
 
     render(<App />);
 
     expect(await screen.findByText("Pending title")).toBeVisible();
-    expect(screen.getAllByText("RSS summary")).toHaveLength(4);
-    expect(screen.queryByText(/<strong>/)).not.toBeInTheDocument();
-    expect(screen.getByText("核心分析")).toBeVisible();
-    expect(screen.getByText("分析完成")).toBeVisible();
-    expect(screen.getByText("细筛拒绝")).toBeVisible();
-    expect(screen.getByText("分析失败")).toBeVisible();
-    expect(screen.getByText("Provider unavailable")).toBeVisible();
+    expect(screen.getByText("等待创建运行")).toBeVisible();
+    expect(screen.getByText(analysisCard.title)).toBeVisible();
     expect(screen.getByLabelText("质量评分 86")).toBeVisible();
-    expect(screen.getByRole("link", {name: /Completed title/})).toHaveAttribute(
-      "href",
-      "/references/10000000-0000-0000-0000-000000000003"
-    );
-    await userEvent.click(screen.getByRole("button", {name: "重新分析"}));
-    await waitFor(() => expect(globalThis.fetch).toHaveBeenCalledWith(
-      expect.stringContaining("/reanalyze"),
-      expect.objectContaining({method: "POST"})
-    ));
+    expect(screen.getByText("未关联引用")).toBeVisible();
+    expect(screen.queryByRole("link", {name: "内容引用"})).not.toBeInTheDocument();
   });
 
-  it("renders transient original content and structured analysis side by side", async () => {
+  it("redirects a legacy reference URL and previews original content lazily", async () => {
     localStorage.setItem("zeromind_token", "token");
     window.history.replaceState({}, "", `/references/${analysisCard.reference_id}`);
-    vi.spyOn(globalThis, "fetch").mockImplementation(async (input) =>
-      String(input).endsWith("/content")
-        ? response(referenceReaderContent)
-        : response(referenceDetail)
-    );
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
+      const url = String(input);
+      if (url.endsWith("/references")) return response({items: [referenceListItem]});
+      if (url.endsWith("/workflow-runs")) return response({items: [workflowRun]});
+      if (url.endsWith("/content")) return response(referenceReaderContent);
+      return response({detail: {code: "not_found"}}, 404);
+    });
 
     render(<App />);
 
     expect(await screen.findByRole("heading", {name: "A useful article"})).toBeVisible();
-    expect(screen.getByText("分析完成")).toBeVisible();
-    expect(screen.getByLabelText("总评分 86")).toBeVisible();
-    expect(screen.getByText("一句话总结")).toBeVisible();
-    expect(screen.queryByText(/<strong>/)).not.toBeInTheDocument();
-    expect(screen.getByText(analysisDetail.summary)).toBeVisible();
-    expect(screen.getByText("确定性门禁让筛选结果更可解释。")).toBeVisible();
-    expect(screen.getByText(/让模型负责判断/)).toBeVisible();
-    expect(screen.getByText("六维评分")).toBeVisible();
-    expect(screen.getByText("recommended")).toBeVisible();
-    expect(screen.getByText("Agent 追溯")).toBeVisible();
     expect(await screen.findByText(/transient original article body/)).toBeVisible();
-    expect(screen.queryByTitle("原文：A useful article")).not.toBeInTheDocument();
     expect(screen.getByText(/未在 ZeroMind 中持久化/)).toBeVisible();
     expect(screen.getAllByRole("link", {name: /新窗口打开原文/})[0]).toHaveAttribute("target", "_blank");
+    expect(window.location.pathname).toBe("/runs");
+    expect(window.location.search).toContain(`reference=${analysisCard.reference_id}`);
   });
 
-  it("falls back to RSS metadata when transient content extraction fails", async () => {
+  it("shows RSS fallback when transient extraction fails", async () => {
     localStorage.setItem("zeromind_token", "token");
-    window.history.replaceState({}, "", `/references/${analysisCard.reference_id}`);
-    vi.spyOn(globalThis, "fetch").mockImplementation(async (input) =>
-      String(input).endsWith("/content")
-        ? response({detail: {code: "content_resolution_failed"}}, 502)
-        : response(referenceDetail)
-    );
+    window.history.replaceState({}, "", `/runs?reference=${analysisCard.reference_id}`);
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
+      const url = String(input);
+      if (url.endsWith("/references")) return response({items: [referenceListItem]});
+      if (url.endsWith("/workflow-runs")) return response({items: [workflowRun]});
+      if (url.endsWith("/content")) {
+        return response({detail: {code: "content_resolution_failed"}}, 502);
+      }
+      return response({detail: {code: "not_found"}}, 404);
+    });
 
     render(<App />);
 
@@ -614,11 +588,63 @@ describe("ZeroMind administration", () => {
     expect(screen.getAllByRole("link", {name: /新窗口打开原文/})[0]).toHaveAttribute("target", "_blank");
   });
 
+  it("shows structured analysis and Agent sessions inside the expanded ledger row", async () => {
+    localStorage.setItem("zeromind_token", "token");
+    window.history.replaceState({}, "", `/runs?reference=${analysisCard.reference_id}`);
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
+      const url = String(input);
+      if (url.endsWith("/references")) return response({items: [referenceListItem]});
+      if (url.endsWith("/workflow-runs")) return response({items: [workflowRun]});
+      if (url.endsWith("/content")) return response(referenceReaderContent);
+      if (url.includes("/agent-sessions?")) return response({items: [agentSession]});
+      if (url.includes(`/analyses/${analysisCard.id}`)) return response(analysisDetail);
+      return response({detail: {code: "not_found"}}, 404);
+    });
+
+    render(<App />);
+
+    await userEvent.click(await screen.findByRole("tab", {name: "分析结果"}));
+    expect(await screen.findByText(analysisDetail.summary)).toBeVisible();
+    expect(screen.getByText("确定性门禁让筛选结果更可解释。")).toBeVisible();
+    await userEvent.click(screen.getByRole("tab", {name: "Agent 轨迹"}));
+    expect(await screen.findByText("quality_score")).toBeVisible();
+    expect(screen.getByText(/openai\/gpt-5-mini/)).toBeVisible();
+  });
+
+  it("requeues failed references from the unified ledger", async () => {
+    localStorage.setItem("zeromind_token", "token");
+    window.history.replaceState({}, "", "/runs");
+    const failed = {
+      ...referenceListItem,
+      analysis_status: "failed",
+      analysis_error_message: "Provider unavailable",
+      analysis: null
+    };
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
+      const url = String(input);
+      if (init?.method === "POST") return response({analysis_status: "pending"}, 202);
+      if (url.endsWith("/references")) return response({items: [failed]});
+      if (url.endsWith("/workflow-runs")) return response({items: [workflowRun]});
+      return response({detail: {code: "not_found"}}, 404);
+    });
+
+    render(<App />);
+
+    expect(await screen.findByText("Provider unavailable")).toBeVisible();
+    await userEvent.click(screen.getByRole("button", {name: "重新分析"}));
+    await waitFor(() => expect(globalThis.fetch).toHaveBeenCalledWith(
+      expect.stringContaining("/reanalyze"),
+      expect.objectContaining({method: "POST"})
+    ));
+  });
+
   it("renders the structured information flow in Chinese", async () => {
     localStorage.setItem("zeromind_token", "token");
     window.history.replaceState({}, "", "/analyses");
+    const requestedUrls: string[] = [];
     vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
       const url = String(input);
+      requestedUrls.push(url);
       if (url.includes("/subscriptions")) {
         return response({items: []});
       }
@@ -646,6 +672,11 @@ describe("ZeroMind administration", () => {
       "target",
       "_blank"
     );
+    expect(requestedUrls.some((url) => url.includes("sort=score"))).toBe(true);
+    await userEvent.click(screen.getByRole("button", {name: "时间优先"}));
+    await waitFor(() => {
+      expect(requestedUrls.some((url) => url.includes("sort=time"))).toBe(true);
+    });
   });
 
   it("renders analysis details and submits a manual decision override", async () => {

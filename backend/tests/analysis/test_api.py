@@ -7,6 +7,7 @@ from fastapi.testclient import TestClient
 from zeromind.agents.registry import AgentRegistry, InMemoryAgentRepository
 from zeromind.analysis.domain import ContentAnalysis, KeyQuote, ScoreDimension, Viewpoint
 from zeromind.analysis.repository import InMemoryAnalysisRepository
+from zeromind.analysis.service import encode_cursor
 from zeromind.bootstrap.app import create_app
 from zeromind.identity.tokens import TokenService
 from zeromind.ingestion.repository import InMemoryReferenceRepository
@@ -181,6 +182,18 @@ def test_analysis_api_maps_not_found_and_invalid_cursor() -> None:
     assert missing.json()["detail"]["code"] == "analysis_not_found"
     assert cursor.status_code == 422
     assert cursor.json()["detail"]["code"] == "invalid_cursor"
+
+
+def test_analysis_api_accepts_sort_and_rejects_cursor_mode_mismatch() -> None:
+    client, _ = make_client()
+    cursor = encode_cursor("score", 86, NOW, ANALYSIS_ID)
+
+    by_time = client.get("/api/v1/analyses?sort=time")
+    mismatch = client.get(f"/api/v1/analyses?sort=time&cursor={cursor}")
+
+    assert by_time.status_code == 200
+    assert mismatch.status_code == 422
+    assert mismatch.json()["detail"]["code"] == "invalid_cursor"
 
 
 def test_override_requires_identity_and_valid_payload() -> None:

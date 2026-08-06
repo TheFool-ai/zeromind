@@ -5,7 +5,8 @@ import {
   Navigate,
   NavLink,
   Route,
-  Routes
+  Routes,
+  useParams
 } from "react-router-dom";
 
 import {api, setToken as persistToken, getToken} from "./api/client";
@@ -13,8 +14,6 @@ import {AgentsPage} from "./pages/agents";
 import {AnalysisDetailPage} from "./pages/analysis-detail";
 import {AnalysesPage} from "./pages/analyses";
 import {OverviewPage} from "./pages/overview";
-import {ReferencesPage} from "./pages/references";
-import {ReferenceDetailPage} from "./pages/reference-detail";
 import {RSSHubPage} from "./pages/rsshub";
 import {RunsPage} from "./pages/runs";
 import {SubscriptionsPage} from "./pages/subscriptions";
@@ -26,13 +25,22 @@ const navigation = [
   ["/", "总览", "01"],
   ["/subscriptions", "订阅源", "02"],
   ["/rsshub", "RSSHub", "03"],
-  ["/references", "内容引用", "04"],
-  ["/analyses", "信息流", "05"],
-  ["/agents", "智能体", "06"],
-  ["/workflows", "工作流", "07"],
-  ["/runs", "运行记录", "08"],
-  ["/webhooks", "Webhook", "09"]
+  ["/analyses", "信息流", "04"],
+  ["/agents", "智能体", "05"],
+  ["/workflows", "工作流", "06"],
+  ["/runs", "运行记录", "07"],
+  ["/webhooks", "Webhook", "08"]
 ] as const;
+
+function LegacyReferenceRedirect() {
+  const {referenceId} = useParams<{referenceId: string}>();
+  return (
+    <Navigate
+      to={referenceId ? `/runs?reference=${encodeURIComponent(referenceId)}` : "/runs"}
+      replace
+    />
+  );
+}
 
 function Login({onLogin}: {onLogin: (token: string) => void}) {
   const [error, setError] = useState<string | null>(null);
@@ -101,8 +109,8 @@ function Shell({logout}: {logout: () => void}) {
           <Route path="/" element={<OverviewPage />} />
           <Route path="/subscriptions" element={<SubscriptionsPage />} />
           <Route path="/rsshub" element={<RSSHubPage />} />
-          <Route path="/references" element={<ReferencesPage />} />
-          <Route path="/references/:referenceId" element={<ReferenceDetailPage />} />
+          <Route path="/references" element={<Navigate to="/runs" replace />} />
+          <Route path="/references/:referenceId" element={<LegacyReferenceRedirect />} />
           <Route path="/analyses" element={<AnalysesPage />} />
           <Route
             path="/analyses/:analysisId"

@@ -310,6 +310,90 @@ async def test_sql_repository_uses_stable_score_time_id_cursor_order(
 
 
 @pytest.mark.asyncio
+async def test_sql_repository_supports_stable_time_score_id_order(
+    sessions: async_sessionmaker[AsyncSession],
+) -> None:
+    repository = SqlAlchemyAnalysisRepository(sessions)
+    newest_low = make_analysis(identifier=3, total_score=70)
+    older_high = make_analysis(
+        identifier=2,
+        reference_id=102,
+        workflow_run_id=202,
+        total_score=95,
+        published_at=NOW - timedelta(days=1),
+    )
+    same_time_no_score = make_analysis(
+        identifier=1,
+        reference_id=103,
+        workflow_run_id=203,
+        total_score=None,
+        status="initial_rejected",
+        published_at=NOW - timedelta(days=1),
+    )
+    for item in (same_time_no_score, older_high, newest_low):
+        await repository.add(item)
+
+    ordered = await repository.list(
+        AnalysisQuery(effective_decision=None, sort="time", limit=10)
+    )
+    after_first = await repository.list(
+        AnalysisQuery(
+            effective_decision=None,
+            sort="time",
+            limit=10,
+            cursor=(
+                newest_low.total_score or -1,
+                newest_low.published_at or newest_low.observed_at,
+                newest_low.id,
+            ),
+        )
+    )
+
+    assert [item.id for item in ordered] == [
+        newest_low.id,
+        older_high.id,
+        same_time_no_score.id,
+    ]
+    assert [item.id for item in after_first] == [
+        older_high.id,
+        same_time_no_score.id,
+    ]
+
+
+@pytest.mark.asyncio
+async def test_in_memory_repository_supports_time_order_and_null_scores() -> None:
+    repository = InMemoryAnalysisRepository()
+    newest_low = make_analysis(identifier=3, total_score=70)
+    older_high = make_analysis(
+        identifier=2,
+        reference_id=102,
+        workflow_run_id=202,
+        total_score=95,
+        published_at=NOW - timedelta(days=1),
+    )
+    older_no_score = make_analysis(
+        identifier=1,
+        reference_id=103,
+        workflow_run_id=203,
+        total_score=None,
+        status="initial_rejected",
+        published_at=NOW - timedelta(days=1),
+    )
+    for item in (older_no_score, older_high, newest_low):
+        await repository.add(item)
+
+    ordered = await repository.list(
+        AnalysisQuery(effective_decision=None, sort="time", limit=10)
+    )
+
+    assert [item.id for item in ordered] == [
+        newest_low.id,
+        older_high.id,
+        older_no_score.id,
+    ]
+
+
+@pytest.mark.asyncio
 async def test_in_memory_repository_matches_idempotency_and_query_contract() -> None:
     repository = InMemoryAnalysisRepository()
     high = make_analysis(identifier=1, total_score=90)

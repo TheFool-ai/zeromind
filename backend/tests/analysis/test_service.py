@@ -79,10 +79,17 @@ async def service_with_items() -> tuple[
 
 def test_cursor_round_trips_url_safe_sort_identity() -> None:
     analysis_id = UUID("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa")
-    cursor = encode_cursor(86, NOW, analysis_id)
+    cursor = encode_cursor("score", 86, NOW, analysis_id)
 
     assert "=" not in cursor
-    assert decode_cursor(cursor) == (86, NOW, analysis_id)
+    assert decode_cursor(cursor, expected_sort="score") == (86, NOW, analysis_id)
+
+
+def test_cursor_rejects_a_different_sort_mode() -> None:
+    cursor = encode_cursor("score", 86, NOW, UUID(int=1))
+
+    with pytest.raises(ValueError, match="invalid_cursor"):
+        decode_cursor(cursor, expected_sort="time")
 
 
 @pytest.mark.parametrize(
@@ -91,7 +98,7 @@ def test_cursor_round_trips_url_safe_sort_identity() -> None:
 )
 def test_decode_cursor_rejects_malformed_values(cursor: str) -> None:
     with pytest.raises(ValueError, match="invalid_cursor"):
-        decode_cursor(cursor)
+        decode_cursor(cursor, expected_sort="score")
 
 
 @pytest.mark.asyncio
@@ -103,9 +110,34 @@ async def test_service_lists_default_qualified_feed_with_cursor_pagination() -> 
     assert first.next_cursor is not None
 
     second = await service.list(
-        AnalysisQuery(limit=2, cursor=decode_cursor(first.next_cursor))
+        AnalysisQuery(
+            limit=2,
+            cursor=decode_cursor(first.next_cursor, expected_sort="score"),
+        )
     )
     assert [item.total_score for item in second.items] == [70]
+    assert second.next_cursor is None
+
+
+@pytest.mark.asyncio
+async def test_service_paginates_time_order_without_duplicates() -> None:
+    service, _ = await service_with_items()
+
+    first = await service.list(
+        AnalysisQuery(effective_decision=None, sort="time", limit=2)
+    )
+    assert [item.id for item in first.items] == [UUID(int=1), UUID(int=2)]
+    assert first.next_cursor is not None
+
+    second = await service.list(
+        AnalysisQuery(
+            effective_decision=None,
+            sort="time",
+            limit=2,
+            cursor=decode_cursor(first.next_cursor, expected_sort="time"),
+        )
+    )
+    assert [item.id for item in second.items] == [UUID(int=3), UUID(int=4)]
     assert second.next_cursor is None
 
 

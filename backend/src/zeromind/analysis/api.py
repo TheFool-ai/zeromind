@@ -6,7 +6,7 @@ from fastapi import APIRouter, HTTPException, Query, Request, status
 from pydantic import BaseModel, ConfigDict, Field
 
 from zeromind.analysis.domain import ContentAnalysis
-from zeromind.analysis.repository import AnalysisQuery
+from zeromind.analysis.repository import AnalysisQuery, AnalysisSort
 from zeromind.analysis.service import AnalysisService, decode_cursor
 from zeromind.identity.context import request_identity
 from zeromind.identity.tokens import AdminIdentity
@@ -220,13 +220,14 @@ def create_analysis_router(
         reference_id: UUID | None = None,
         observed_from: datetime | None = None,
         observed_to: datetime | None = None,
+        sort: AnalysisSort = "score",
         limit: int = Query(default=20, ge=1, le=100),
         cursor: str | None = None,
     ) -> AnalysisListResponse:
         decoded_cursor = None
         if cursor is not None:
             try:
-                decoded_cursor = decode_cursor(cursor)
+                decoded_cursor = decode_cursor(cursor, expected_sort=sort)
             except ValueError as error:
                 raise HTTPException(
                     status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
@@ -243,6 +244,7 @@ def create_analysis_router(
                 reference_id=reference_id,
                 observed_from=observed_from,
                 observed_to=observed_to,
+                sort=sort,
                 limit=limit,
                 cursor=decoded_cursor,
             )
