@@ -39,8 +39,6 @@ zeromind/
 │       ├── nginx.conf
 │       └── Dockerfile
 ├── compose.yaml
-├── pnpm-workspace.yaml
-├── package.json
 ├── .env.example
 ├── .dockerignore
 ├── .gitignore
@@ -85,9 +83,9 @@ from the same Python project. The Agent runtime continues to be built and invoke
 the existing JSONL subprocess contract so this directory-only change does not also become a
 network protocol migration.
 
-The root becomes the pnpm workspace boundary for `apps/web` and `apps/agent-runtime`.
-Repository-level JavaScript configuration contains orchestration commands only; application
-dependencies and scripts remain in each application's `package.json`.
+The web and Agent runtime applications retain their own pnpm workspace files and lockfiles.
+There is no root JavaScript workspace: application dependencies, scripts, and lockfiles stay
+with the application that owns them, which keeps each application independently buildable.
 
 ## Application Communication
 
