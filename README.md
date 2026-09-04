@@ -54,8 +54,8 @@ docker compose ps
    历史。在“工作流”确认完整分析工作流已激活。
 6. 可选：注册 webhook，`secret_env` 同样填写环境变量名。
 
-六份 [Agent JSON 示例](docs/examples) 中的 `provider_profile_id` 和
-[完整分析工作流](docs/examples/article-analysis.yaml) 中的六个 `agent_id` 都是占位 UUID；注册
+六份 [Agent JSON 示例](apps/information/docs/examples) 中的 `provider_profile_id` 和
+[完整分析工作流](apps/information/docs/examples/article-analysis.yaml) 中的六个 `agent_id` 都是占位 UUID；注册
 脚本会使用数据库中的真实 ID。Provider 密钥必须注入 API/worker 容器环境，JSON、Agent 版本
 和 session 中都不会保存密钥。
 
@@ -107,19 +107,19 @@ flowchart LR
 
 ```bash
 python3 -m venv .venv
-.venv/bin/pip install -e 'backend[dev]'
-cd backend
-../.venv/bin/pytest -q
-../.venv/bin/ruff check src tests
-../.venv/bin/mypy src
+.venv/bin/pip install -e 'apps/information[dev]'
+cd apps/information
+../../.venv/bin/pytest -q
+../../.venv/bin/ruff check src tests
+../../.venv/bin/mypy src
 
-cd ../pi-runner
+cd ../agent-runtime
 pnpm install
 pnpm test
 pnpm typecheck
 pnpm build
 
-cd ../frontend
+cd ../web
 pnpm install
 pnpm test
 pnpm typecheck
@@ -128,7 +128,8 @@ pnpm build
 
 API 文档位于 `/api/docs`。生产应用默认保护 `/api/v1/*`（除登录接口），健康检查不需要令牌。
 
-更详细的升级、备份、恢复和故障处理见 [运维手册](docs/operations.md)。
+更详细的升级、备份、恢复和故障处理见
+[运维手册](apps/information/docs/operations.md)。
 
 历史内容可通过 `scripts/backfill_reference_analysis.py` 分阶段加入“信息分析工作流”；先使用
 `--all --dry-run` 检查数量，再按运维手册执行小批量和全量 generation。

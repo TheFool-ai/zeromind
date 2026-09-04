@@ -166,7 +166,7 @@ Provider 不可用、凭证缺失、Pi 超时或输出 Schema 不匹配时，工
 
 日志或运行记录出现 `AgentInputError` / `AgentOutputError` 时：
 
-1. 对照 `docs/examples/screening-agent.json` 或 `analysis-agent.json` 检查 required、
+1. 对照 `apps/information/docs/examples/screening-agent.json` 或 `analysis-agent.json` 检查 required、
    `additionalProperties`、整数范围和数组上限；
 2. 确认工作流传给初筛 Agent 的只有 `metadata`、`audience`，传给分析 Agent 的是
    `metadata`、`document`、`audience` 和可选 `maximum_quotes`；

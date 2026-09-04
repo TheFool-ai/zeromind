@@ -8,7 +8,7 @@
 
 **Tech Stack:** Python 3.12, FastAPI, Celery, Alembic, React 19, TypeScript, Vite, Node.js 22, pnpm 11.9, Docker Compose.
 
-**Spec:** `docs/superpowers/specs/2026-09-04-monorepo-directory-restructure-design.md`
+**Spec:** `apps/information/docs/superpowers/specs/2026-09-04-monorepo-directory-restructure-design.md`
 
 ## Global Constraints
 
