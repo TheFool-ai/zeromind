@@ -1,4 +1,5 @@
 import json
+import runpy
 from pathlib import Path
 from uuid import UUID
 
@@ -13,7 +14,8 @@ from zeromind.workflows.dsl import parse_workflow_yaml, validate_workflow
 from zeromind.workflows.presets import upsert_main_analysis_workflow
 from zeromind.workflows.repository import InMemoryWorkflowRepository
 
-EXAMPLES = Path(__file__).resolve().parents[3] / "docs" / "examples"
+APPLICATION_ROOT = Path(__file__).resolve().parents[2]
+EXAMPLES = APPLICATION_ROOT / "docs" / "examples"
 FILES = (
     "screening-agent.json",
     "core-analysis-agent.json",
@@ -26,6 +28,14 @@ PLACEHOLDERS = tuple(
     UUID(f"00000000-0000-0000-0000-{value:012d}")
     for value in range(101, 107)
 )
+
+
+def test_registration_script_uses_application_owned_examples() -> None:
+    script_globals = runpy.run_path(
+        str(APPLICATION_ROOT / "scripts" / "register_analysis_agents.py")
+    )
+
+    assert script_globals["EXAMPLES"] == EXAMPLES
 
 
 @pytest.mark.asyncio

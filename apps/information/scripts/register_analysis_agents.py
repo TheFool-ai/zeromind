@@ -16,7 +16,7 @@ from zeromind.workflows.dsl import parse_workflow_yaml, validate_workflow
 from zeromind.workflows.presets import upsert_main_analysis_workflow
 from zeromind.workflows.repository import SqlAlchemyWorkflowRepository
 
-EXAMPLES = Path(__file__).resolve().parents[2] / "docs" / "examples"
+EXAMPLES = Path(__file__).resolve().parents[1] / "docs" / "examples"
 AGENT_FILES = (
     ("screening-agent.json", "00000000-0000-0000-0000-000000000101"),
     ("core-analysis-agent.json", "00000000-0000-0000-0000-000000000102"),

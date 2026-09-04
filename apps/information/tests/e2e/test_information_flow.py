@@ -301,7 +301,7 @@ output:
 
 
 def test_documented_analysis_examples_are_parseable_and_strict() -> None:
-    examples = Path(__file__).parents[3] / "docs" / "examples"
+    examples = Path(__file__).parents[2] / "docs" / "examples"
     agents = [
         CreateAgentRequest.model_validate(
             json.loads((examples / filename).read_text())
@@ -356,7 +356,7 @@ def test_documented_analysis_examples_are_parseable_and_strict() -> None:
 async def test_reference_first_information_flow(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    assert (Path(__file__).parents[3] / "compose.yaml").exists()
+    assert (Path(__file__).parents[4] / "compose.yaml").exists()
     now = datetime(2026, 7, 31, 12, tzinfo=UTC)
     subscriptions = InMemorySubscriptionRepository()
     imported = await SubscriptionService(subscriptions).import_entries(
