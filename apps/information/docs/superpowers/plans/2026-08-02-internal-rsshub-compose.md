@@ -16,7 +16,7 @@
 - The private-address exception matches exact normalized hostnames only; it never matches suffixes, arbitrary IP ranges, or IP literals.
 - `NetworkPolicy()` keeps an empty allowlist by default.
 - Only scheduled feed fetching consumes `ZEROMIND_RSSHUB_PRIVATE_HOSTS`.
-- Do not modify or stage the pre-existing changes in `backend/migrations/env.py`, `backend/src/zeromind/shared/migration_config.py`, or `backend/tests/test_migration_config.py`.
+- Do not modify or stage the pre-existing changes in `backend/init-sql/env.py`, `backend/src/zeromind/shared/migration_config.py`, or `backend/tests/test_migration_config.py`.
 - Do not automatically seed PostgreSQL or configure an RSSHub `ACCESS_KEY`.
 
 ---

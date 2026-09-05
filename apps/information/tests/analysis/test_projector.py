@@ -9,8 +9,11 @@ from zeromind.analysis.repository import AnalysisQuery, InMemoryAnalysisReposito
 from zeromind.ingestion.domain import FeedEntry
 from zeromind.ingestion.repository import InMemoryReferenceRepository
 from zeromind.ingestion.service import IngestionService
-from zeromind.subscriptions.domain import Subscription
-from zeromind.subscriptions.repository import InMemorySubscriptionRepository
+from zeromind.subscriptions.domain.aggregates.subscription import Subscription
+from zeromind.subscriptions.infrastructure.persistence.in_memory_subscription_repository import (
+    InMemorySubscriptionRepository,
+)
+from zeromind.subscriptions.public import SubscriptionService
 from zeromind.workflows.domain import WorkflowDefinition, WorkflowRun
 from zeromind.workflows.dsl import parse_workflow_yaml
 
@@ -181,7 +184,7 @@ async def test_projector_persists_completed_run_once_with_provenance() -> None:
         await source_repositories()
     )
     analyses = InMemoryAnalysisRepository()
-    projector = AnalysisProjector(analyses, references, subscriptions)
+    projector = AnalysisProjector(analyses, references, SubscriptionService(subscriptions))
     definition = analysis_definition()
     run = completed_run(
         definition,
@@ -226,7 +229,7 @@ async def test_projector_ignores_workflow_without_projection() -> None:
     projected = await AnalysisProjector(
         analyses,
         references,
-        subscriptions,
+        SubscriptionService(subscriptions),
     ).project(definition, run)
 
     assert projected is None
@@ -267,7 +270,7 @@ async def test_projector_rejects_inconsistent_reference_provenance(
         await AnalysisProjector(
             analyses,
             references,
-            subscriptions,
+            SubscriptionService(subscriptions),
         ).project(definition, run)
 
     assert await analyses.list(AnalysisQuery(effective_decision=None)) == ()
@@ -295,7 +298,7 @@ async def test_projector_rejects_missing_reference_revision() -> None:
         await AnalysisProjector(
             analyses,
             references,
-            subscriptions,
+            SubscriptionService(subscriptions),
         ).project(definition, run)
 
     assert await analyses.list(AnalysisQuery(effective_decision=None)) == ()
@@ -325,7 +328,7 @@ async def test_projector_rejects_invalid_or_transient_output_without_partial_wri
         await AnalysisProjector(
             analyses,
             references,
-            subscriptions,
+            SubscriptionService(subscriptions),
         ).project(definition, run)
 
     assert await analyses.list(AnalysisQuery(effective_decision=None)) == ()
@@ -337,7 +340,7 @@ async def test_projector_reuses_business_identity_across_different_runs() -> Non
         await source_repositories()
     )
     analyses = InMemoryAnalysisRepository()
-    projector = AnalysisProjector(analyses, references, subscriptions)
+    projector = AnalysisProjector(analyses, references, SubscriptionService(subscriptions))
     definition = analysis_definition()
     output = qualified_output(
         reference_id=reference_id,

@@ -35,7 +35,7 @@ docker compose exec -T postgres psql -U zeromind -d zeromind -Atc \
 
 ## 进程职责
 
-- `api`：同步管理 API、管理员鉴权和 OpenAPI。
+- `api`：同步管理 API 和 OpenAPI。
 - `scheduler`：Celery Beat；每 30 分钟产生到期 Feed 认领任务，每分钟触发 outbox 派发。
 - `worker`：处理 Feed、工作流和 webhook 队列；任务 late-ack，worker 异常后可重新投递。
 - `postgres`：业务事实、幂等键、运行记录和 outbox，是可恢复的唯一事实来源。
@@ -65,7 +65,7 @@ docker compose run --rm api python scripts/backfill_reference_analysis.py --all 
 
 ### 内置 Compose 实例
 
-默认 Compose 栈包含 `diygod/rsshub:latest`，但不发布宿主机端口。登录控制台后注册一次：
+默认 Compose 栈包含 `diygod/rsshub:latest`，但不发布宿主机端口。打开控制台后注册一次：
 
 ```text
 名称：Built-in RSSHub
@@ -199,9 +199,9 @@ Provider 不可用、凭证缺失、Pi 超时或输出 Schema 不匹配时，工
 
 ## 安全边界
 
-- 只允许单组织管理员；生产环境应在 TLS 反向代理后运行。
+- 当前管理控制台和 API 无需登录，笔记共享访问；生产环境应在 TLS 反向代理后运行。
 - 所有出站原文与 webhook URL 在请求前解析 DNS 并拒绝非公网 IP；原文重定向逐跳复检。
 - OPML 使用禁用外部实体的解析器；工作流使用 `yaml.safe_load` 和受限 `$.path` 映射。
 - 原文正文仅存在于单次工作流进程内存，运行步骤持久化前会移除 transient document 的正文。
-- 定期轮换管理员令牌密钥、Provider 密钥和 webhook secret。RSSHub Access Key 可以在页面
+- 定期轮换 Provider 密钥和 webhook secret。RSSHub Access Key 可以在页面
   直接替换；应用凭证加密密钥必须按上面的重新加密流程轮换。

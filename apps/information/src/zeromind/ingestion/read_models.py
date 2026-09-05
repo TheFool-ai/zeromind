@@ -12,8 +12,7 @@ from zeromind.ingestion.domain import (
     normalized_entry_url,
 )
 from zeromind.ingestion.repository import ReferenceRepository
-from zeromind.subscriptions.domain import Subscription
-from zeromind.subscriptions.repository import SubscriptionRepository
+from zeromind.subscriptions.public import SubscriptionService, SubscriptionView
 from zeromind.workflows.constants import MAIN_ANALYSIS_WORKFLOW_NAME
 from zeromind.workflows.domain import WorkflowDefinition
 from zeromind.workflows.repository import WorkflowRepository
@@ -37,7 +36,7 @@ class ReferenceListQuery:
 class ReferenceListItem:
     reference: ContentReference
     revision: ReferenceRevision
-    subscription: Subscription | None
+    subscription: SubscriptionView | None
     analysis: ContentAnalysis | None
 
 
@@ -45,7 +44,7 @@ class ReferenceListItem:
 class ReferenceReadingDetail:
     reference: ContentReference
     revision: ReferenceRevision
-    subscription: Subscription | None
+    subscription: SubscriptionView | None
     analysis: ContentAnalysis | None
     iframe_url: str | None
 
@@ -58,7 +57,7 @@ class ReferenceReadService:
     def __init__(
         self,
         references: ReferenceRepository,
-        subscriptions: SubscriptionRepository,
+        subscriptions: SubscriptionService,
         analyses: AnalysisRepository,
         workflows: WorkflowRepository,
         content_resolver: ContentResolver | None = None,

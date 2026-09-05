@@ -32,7 +32,7 @@ Celery, pytest, Docker Compose v2, PostgreSQL 16, POSIX shell.
 - Keep backend and Pi runner containers non-root.
 - Do not expose PostgreSQL, Redis, or secret source paths through public ports.
 - Preserve the existing uncommitted work in
-  `backend/migrations/env.py`,
+  `backend/init-sql/env.py`,
   `backend/src/zeromind/shared/migration_config.py`, and
   `backend/tests/test_migration_config.py`. Extend it additively where this
   plan requires database secret support; never discard or overwrite its

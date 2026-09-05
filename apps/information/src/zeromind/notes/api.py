@@ -1,10 +1,9 @@
 from datetime import datetime
 from uuid import UUID
 
-from fastapi import APIRouter, HTTPException, Request, Response, status
+from fastapi import APIRouter, HTTPException, Response, status
 from pydantic import BaseModel, ConfigDict
 
-from zeromind.identity.context import request_identity
 from zeromind.notes.domain import Note
 from zeromind.notes.service import NoteService
 
@@ -69,13 +68,10 @@ def create_note_router(service: NoteService) -> APIRouter:
 
     @router.get("", response_model=NoteListResponse)
     async def list_notes(
-        request: Request,
         reference_id: UUID | None = None,
         analysis_id: UUID | None = None,
     ) -> NoteListResponse:
-        identity = request_identity(request)
-        notes = await service.list_owned(
-            identity.username,
+        notes = await service.list(
             reference_id=reference_id,
             analysis_id=analysis_id,
         )
@@ -90,12 +86,9 @@ def create_note_router(service: NoteService) -> APIRouter:
     )
     async def create_note(
         payload: CreateNoteRequest,
-        request: Request,
     ) -> NoteResponse:
-        identity = request_identity(request)
         try:
             note = await service.create(
-                owner_subject=identity.username,
                 reference_id=payload.reference_id,
                 analysis_id=payload.analysis_id,
                 body=payload.body,
@@ -108,13 +101,10 @@ def create_note_router(service: NoteService) -> APIRouter:
     async def update_note(
         note_id: UUID,
         payload: UpdateNoteRequest,
-        request: Request,
     ) -> NoteResponse:
-        identity = request_identity(request)
         try:
             note = await service.update(
                 note_id,
-                owner_subject=identity.username,
                 body=payload.body,
                 analysis_id=payload.analysis_id,
             )
@@ -131,10 +121,9 @@ def create_note_router(service: NoteService) -> APIRouter:
         "/{note_id}",
         status_code=status.HTTP_204_NO_CONTENT,
     )
-    async def delete_note(note_id: UUID, request: Request) -> Response:
-        identity = request_identity(request)
+    async def delete_note(note_id: UUID) -> Response:
         try:
-            await service.delete(note_id, owner_subject=identity.username)
+            await service.delete(note_id)
         except KeyError as error:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,

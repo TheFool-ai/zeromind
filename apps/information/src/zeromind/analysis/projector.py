@@ -10,7 +10,7 @@ from zeromind.analysis.domain import (
 from zeromind.analysis.repository import AnalysisRepository
 from zeromind.analysis.schema import ContentAnalysisDraftV1
 from zeromind.ingestion.repository import ReferenceRepository
-from zeromind.subscriptions.repository import SubscriptionRepository
+from zeromind.subscriptions.public import SubscriptionService
 from zeromind.workflows.domain import WorkflowDefinition, WorkflowRun
 
 
@@ -19,11 +19,11 @@ class AnalysisProjector:
         self,
         analysis_repository: AnalysisRepository,
         reference_repository: ReferenceRepository,
-        subscription_repository: SubscriptionRepository,
+        subscription_service: SubscriptionService,
     ) -> None:
         self._analyses = analysis_repository
         self._references = reference_repository
-        self._subscriptions = subscription_repository
+        self._subscriptions = subscription_service
 
     async def project(
         self,

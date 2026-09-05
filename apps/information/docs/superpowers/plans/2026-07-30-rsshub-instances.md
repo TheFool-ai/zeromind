@@ -157,8 +157,8 @@ git commit -m "feat: accept RSSHub subscription locators"
 - Create: `backend/tests/rsshub/test_credentials.py`
 - Create: `backend/tests/rsshub/test_repository.py`
 - Create: `backend/tests/rsshub/test_service.py`
-- Create: `backend/migrations/versions/0007_rsshub_instances.py`
-- Modify: `backend/migrations/env.py`
+- Create: `backend/init-sql/versions/0007_rsshub_instances.py`
+- Modify: `backend/init-sql/env.py`
 - Modify: `backend/src/zeromind/shared/config.py`
 - Modify: `backend/pyproject.toml`
 - Modify: `compose.yaml`

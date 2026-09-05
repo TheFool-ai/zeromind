@@ -46,7 +46,7 @@ async def sessions() -> AsyncIterator[async_sessionmaker[AsyncSession]]:
 
 
 @pytest.mark.asyncio
-async def test_sql_repository_round_trips_and_filters_owned_notes(
+async def test_sql_repository_round_trips_and_filters_shared_notes(
     sessions: async_sessionmaker[AsyncSession],
 ) -> None:
     repository = SqlAlchemyNoteRepository(sessions)
@@ -62,13 +62,11 @@ async def test_sql_repository_round_trips_and_filters_owned_notes(
     await repository.add(first)
     await repository.add(second)
 
-    restored = await repository.get_owned(first.id, "admin")
-    by_reference = await repository.list_owned(
-        "admin",
+    restored = await repository.get(first.id)
+    by_reference = await repository.list(
         reference_id=REFERENCE_ID,
     )
-    by_analysis = await repository.list_owned(
-        "admin",
+    by_analysis = await repository.list(
         analysis_id=ANALYSIS_ID,
     )
 
@@ -76,11 +74,11 @@ async def test_sql_repository_round_trips_and_filters_owned_notes(
     assert restored.body == "Important insight"
     assert [item.id for item in by_reference] == [first.id]
     assert [item.id for item in by_analysis] == [first.id]
-    assert await repository.get_owned(first.id, "other") is None
+    assert [item.id for item in await repository.list()] == [first.id, second.id]
 
 
 @pytest.mark.asyncio
-async def test_sql_repository_updates_only_owned_target_and_hard_deletes(
+async def test_sql_repository_updates_only_target_and_hard_deletes(
     sessions: async_sessionmaker[AsyncSession],
 ) -> None:
     repository = SqlAlchemyNoteRepository(sessions)
@@ -95,27 +93,26 @@ async def test_sql_repository_updates_only_owned_target_and_hard_deletes(
     )
 
     await repository.save(first)
-    await repository.delete(first.id, "admin")
+    await repository.delete(first.id)
 
-    assert await repository.get_owned(first.id, "admin") is None
-    restored_second = await repository.get_owned(second.id, "admin")
+    assert await repository.get(first.id) is None
+    restored_second = await repository.get(second.id)
     assert restored_second is not None
     assert restored_second.body == "Keep unchanged"
 
 
 @pytest.mark.asyncio
-async def test_in_memory_repository_matches_ownership_contract() -> None:
+async def test_in_memory_repository_shares_notes_from_all_owners() -> None:
     repository = InMemoryNoteRepository()
     first = note(identifier=1)
+    second = note(identifier=2, owner="other")
     await repository.add(first)
+    await repository.add(second)
 
-    assert (await repository.get_owned(first.id, "admin")).id == first.id  # type: ignore[union-attr]
-    assert await repository.get_owned(first.id, "other") is None
-    assert [item.id for item in await repository.list_owned("admin")] == [
-        first.id
-    ]
-
-    await repository.delete(first.id, "other")
-    assert await repository.get_owned(first.id, "admin") is not None
-    await repository.delete(first.id, "admin")
-    assert await repository.get_owned(first.id, "admin") is None
+    restored = await repository.get(first.id)
+    assert restored is not None
+    assert restored.owner_subject == "admin"
+    assert [item.id for item in await repository.list()] == [first.id, second.id]
+    await repository.delete(first.id)
+    assert await repository.get(first.id) is None
+    assert await repository.get(second.id) is not None

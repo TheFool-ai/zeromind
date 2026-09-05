@@ -20,7 +20,7 @@
 - Deterministic score weights remain relevance 20%, information value 25%, depth 20%, practicality 15%, novelty 10%, and clarity 10%.
 - Pi remains in-memory, tool-free, and disposed after every invocation.
 - Preserve compatibility for existing Agent IDs, existing two-Agent examples, activated workflows, and `content_analysis_v1` projections.
-- The current worktree changes in `backend/migrations/env.py`, `backend/src/zeromind/shared/migration_config.py`, and `backend/tests/test_migration_config.py` are unrelated user changes; never stage or modify them in this plan.
+- The current worktree changes in `backend/init-sql/env.py`, `backend/src/zeromind/shared/migration_config.py`, and `backend/tests/test_migration_config.py` are unrelated user changes; never stage or modify them in this plan.
 - Use test-driven development for every task: add a failing focused test, observe the expected failure, implement the smallest complete change, run the focused suite, then commit only the listed files.
 
 ---
@@ -33,7 +33,7 @@
 - `backend/src/zeromind/agents/models.py`: SQLAlchemy models for stable Agent identities, immutable versions, Provider Profiles, and sessions.
 - `backend/src/zeromind/agents/registry.py`: in-memory/SQL repositories plus registry operations that resolve or append versions atomically.
 - `backend/src/zeromind/agents/api.py`: Agent creation, version creation, version history, enable/disable, discovery, and Provider endpoints.
-- `backend/migrations/versions/0010_agent_versions_and_sessions.py`: data-preserving schema migration from mutable definitions to immutable versions and sessions.
+- `backend/init-sql/versions/0010_agent_versions_and_sessions.py`: data-preserving schema migration from mutable definitions to immutable versions and sessions.
 
 ### Session traceability
 
@@ -82,7 +82,7 @@
 
 **Files:**
 
-- Create: `backend/migrations/versions/0010_agent_versions_and_sessions.py`
+- Create: `backend/init-sql/versions/0010_agent_versions_and_sessions.py`
 - Modify: `backend/src/zeromind/agents/models.py`
 - Test: `backend/tests/agents/test_migration.py`
 
@@ -159,7 +159,7 @@ Run:
 ```bash
 cd backend
 ../.venv/bin/pytest tests/agents/test_migration.py tests/agents/test_repository.py -q
-../.venv/bin/ruff check src/zeromind/agents/models.py migrations/versions/0010_agent_versions_and_sessions.py tests/agents/test_migration.py
+../.venv/bin/ruff check src/zeromind/agents/models.py init-sql/versions/0010_agent_versions_and_sessions.py tests/agents/test_migration.py
 ```
 
 Expected: PASS; upgrade/downgrade preserves the Agent and configuration.
@@ -167,7 +167,7 @@ Expected: PASS; upgrade/downgrade preserves the Agent and configuration.
 - [ ] **Step 7: Commit the migration**
 
 ```bash
-git add backend/migrations/versions/0010_agent_versions_and_sessions.py backend/src/zeromind/agents/models.py backend/tests/agents/test_migration.py
+git add backend/init-sql/versions/0010_agent_versions_and_sessions.py backend/src/zeromind/agents/models.py backend/tests/agents/test_migration.py
 git commit -m "feat: add agent versions and sessions schema"
 ```
 

@@ -9,11 +9,11 @@ from zeromind.analysis.domain import ContentAnalysis, KeyQuote, ScoreDimension, 
 from zeromind.analysis.repository import InMemoryAnalysisRepository
 from zeromind.analysis.service import encode_cursor
 from zeromind.bootstrap.app import create_app
-from zeromind.identity.tokens import TokenService
 from zeromind.ingestion.repository import InMemoryReferenceRepository
-from zeromind.shared.config import Settings
-from zeromind.subscriptions.repository import InMemorySubscriptionRepository
-from zeromind.subscriptions.service import SubscriptionService
+from zeromind.subscriptions.infrastructure.persistence.in_memory_subscription_repository import (
+    InMemorySubscriptionRepository,
+)
+from zeromind.subscriptions.public import SubscriptionService
 
 ANALYSIS_ID = UUID("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa")
 NOW = datetime(2026, 7, 31, 5, tzinfo=UTC)
@@ -93,14 +93,9 @@ def stored_analysis() -> ContentAnalysis:
     )
 
 
-def make_client() -> tuple[TestClient, str]:
+def make_client() -> TestClient:
     analyses = InMemoryAnalysisRepository()
     asyncio.run(analyses.add(stored_analysis()))
-    settings = Settings(
-        admin_username="admin",
-        admin_password="correct-horse",
-        token_secret="test-secret-that-is-long-enough",
-    )
     client = TestClient(
         create_app(
             subscription_service=SubscriptionService(
@@ -109,24 +104,18 @@ def make_client() -> tuple[TestClient, str]:
             reference_repository=InMemoryReferenceRepository(),
             agent_registry=AgentRegistry(InMemoryAgentRepository()),
             analysis_repository=analyses,
-            token_service=TokenService(settings),
         )
     )
-    token = client.post(
-        "/api/v1/auth/token",
-        json={"username": "admin", "password": "correct-horse"},
-    ).json()["access_token"]
-    return client, token
+    return client
 
 
 def test_analysis_list_detail_and_override_contract() -> None:
-    client, token = make_client()
+    client = make_client()
 
     listed = client.get("/api/v1/analyses?minimum_score=80")
     detail = client.get(f"/api/v1/analyses/{ANALYSIS_ID}")
     overridden = client.post(
         f"/api/v1/analyses/{ANALYSIS_ID}/overrides",
-        headers={"authorization": f"Bearer {token}"},
         json={
             "decision": "rejected",
             "reason": "Manual review found unsupported claims.",
@@ -145,15 +134,14 @@ def test_analysis_list_detail_and_override_contract() -> None:
     )
     assert overridden.status_code == 200
     assert overridden.json()["effective_decision"] == "rejected"
-    assert overridden.json()["overrides"][-1]["actor_subject"] == "admin"
+    assert overridden.json()["overrides"][-1]["actor_subject"] == "local"
     assert "ARTICLE BODY" not in listed.text + detail.text + overridden.text
 
 
 def test_analysis_list_supports_explicit_rejected_view() -> None:
-    client, token = make_client()
+    client = make_client()
     client.post(
         f"/api/v1/analyses/{ANALYSIS_ID}/overrides",
-        headers={"authorization": f"Bearer {token}"},
         json={
             "decision": "rejected",
             "reason": "Manual review found unsupported claims.",
@@ -172,7 +160,7 @@ def test_analysis_list_supports_explicit_rejected_view() -> None:
 
 
 def test_analysis_api_maps_not_found_and_invalid_cursor() -> None:
-    client, _ = make_client()
+    client = make_client()
     missing = client.get(
         "/api/v1/analyses/99999999-9999-9999-9999-999999999999"
     )
@@ -185,7 +173,7 @@ def test_analysis_api_maps_not_found_and_invalid_cursor() -> None:
 
 
 def test_analysis_api_accepts_sort_and_rejects_cursor_mode_mismatch() -> None:
-    client, _ = make_client()
+    client = make_client()
     cursor = encode_cursor("score", 86, NOW, ANALYSIS_ID)
 
     by_time = client.get("/api/v1/analyses?sort=time")
@@ -196,8 +184,8 @@ def test_analysis_api_accepts_sort_and_rejects_cursor_mode_mismatch() -> None:
     assert mismatch.json()["detail"]["code"] == "invalid_cursor"
 
 
-def test_override_requires_identity_and_valid_payload() -> None:
-    client, token = make_client()
+def test_override_allows_anonymous_access_and_validates_payload() -> None:
+    client = make_client()
 
     anonymous = client.post(
         f"/api/v1/analyses/{ANALYSIS_ID}/overrides",
@@ -208,18 +196,16 @@ def test_override_requires_identity_and_valid_payload() -> None:
     )
     short = client.post(
         f"/api/v1/analyses/{ANALYSIS_ID}/overrides",
-        headers={"authorization": f"Bearer {token}"},
         json={"decision": "rejected", "reason": "short"},
     )
     invalid_decision = client.post(
         f"/api/v1/analyses/{ANALYSIS_ID}/overrides",
-        headers={"authorization": f"Bearer {token}"},
         json={
             "decision": "maybe",
             "reason": "Manual review found unsupported claims.",
         },
     )
 
-    assert anonymous.status_code == 401
+    assert anonymous.status_code == 200
     assert short.status_code == 422
     assert invalid_decision.status_code == 422

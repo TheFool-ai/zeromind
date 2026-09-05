@@ -8,8 +8,11 @@ from zeromind.analysis.repository import AnalysisQuery, InMemoryAnalysisReposito
 from zeromind.ingestion.domain import FeedEntry
 from zeromind.ingestion.repository import InMemoryReferenceRepository
 from zeromind.ingestion.service import IngestionService
-from zeromind.subscriptions.domain import Subscription
-from zeromind.subscriptions.repository import InMemorySubscriptionRepository
+from zeromind.subscriptions.domain.aggregates.subscription import Subscription
+from zeromind.subscriptions.infrastructure.persistence.in_memory_subscription_repository import (
+    InMemorySubscriptionRepository,
+)
+from zeromind.subscriptions.public import SubscriptionService
 from zeromind.workflows.domain import WorkflowDefinition
 from zeromind.workflows.dsl import WorkflowSpec
 from zeromind.workflows.executor import NodeExecutionContext, WorkflowExecutor
@@ -111,7 +114,7 @@ async def build_service(
 
     executor = WorkflowExecutor(workflows, handlers={"parallel": noop})
     analyses = InMemoryAnalysisRepository()
-    projector = AnalysisProjector(analyses, references, subscriptions)
+    projector = AnalysisProjector(analyses, references, SubscriptionService(subscriptions))
     service = WorkflowRunService(
         workflows,
         executor,

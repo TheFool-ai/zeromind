@@ -28,12 +28,12 @@
 ### Task 1: Reference lifecycle domain and database migration
 
 **Files:**
-- Create: `backend/migrations/versions/0011_reference_analysis_lifecycle.py`
+- Create: `backend/init-sql/versions/0011_reference_analysis_lifecycle.py`
 - Modify: `backend/src/zeromind/ingestion/domain.py`
 - Modify: `backend/src/zeromind/ingestion/models.py`
 - Modify: `backend/src/zeromind/ingestion/service.py`
 - Modify: `backend/src/zeromind/ingestion/repository.py`
-- Modify: `backend/migrations/env.py`
+- Modify: `backend/init-sql/env.py`
 - Test: `backend/tests/ingestion/test_domain.py`
 - Test: `backend/tests/ingestion/test_service.py`
 - Test: `backend/tests/ingestion/test_repository.py`
@@ -122,7 +122,7 @@ analysis_status_revision = current_revision,
 analysis_status_updated_at = CURRENT_TIMESTAMP
 ```
 
-Then make status, status revision, and status timestamp non-null. Add `ck_content_reference_analysis_status`, indexes on status and status-updated-at, and the workflow run foreign key with `ON DELETE SET NULL`. Import `ContentReferenceModel`, `WorkflowRunModel`, and all newly referenced models from `migrations/env.py`.
+Then make status, status revision, and status timestamp non-null. Add `ck_content_reference_analysis_status`, indexes on status and status-updated-at, and the workflow run foreign key with `ON DELETE SET NULL`. Import `ContentReferenceModel`, `WorkflowRunModel`, and all newly referenced models from `init-sql/env.py`.
 
 - [ ] **Step 6: Round-trip all fields through in-memory and SQL repositories**
 
@@ -135,7 +135,7 @@ Run:
 ```bash
 cd backend
 ../.venv/bin/pytest tests/ingestion tests/agents/test_migration.py tests/test_migration_config.py -q
-../.venv/bin/ruff check migrations src/zeromind/ingestion tests/ingestion
+../.venv/bin/ruff check init-sql src/zeromind/ingestion tests/ingestion
 ../.venv/bin/mypy src/zeromind/ingestion
 ```
 
@@ -144,7 +144,7 @@ Expected: all pass.
 - [ ] **Step 8: Commit**
 
 ```bash
-git add backend/migrations backend/src/zeromind/ingestion backend/tests/ingestion
+git add backend/init-sql backend/src/zeromind/ingestion backend/tests/ingestion
 git commit -m "feat: add reference analysis lifecycle"
 ```
 
@@ -776,7 +776,7 @@ Run:
 
 ```bash
 cd backend
-../.venv/bin/ruff check migrations src tests scripts
+../.venv/bin/ruff check init-sql src tests scripts
 ../.venv/bin/mypy src
 ../.venv/bin/pytest -q
 cd ../pi-runner

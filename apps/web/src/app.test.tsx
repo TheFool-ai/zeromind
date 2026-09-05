@@ -178,23 +178,17 @@ describe("ZeroMind administration", () => {
     window.history.replaceState({}, "", "/");
   });
 
-  it("authenticates then renders the management navigation", async () => {
-    vi.spyOn(globalThis, "fetch").mockResolvedValue(
-      response({access_token: "token", token_type: "bearer"})
-    );
+  it("renders the management navigation without login", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(response({items: []}));
     render(<App />);
-
-    await userEvent.type(screen.getByLabelText("用户名"), "admin");
-    await userEvent.type(screen.getByLabelText("密码"), "secret");
-    await userEvent.click(screen.getByRole("button", {name: "登录"}));
 
     expect(await screen.findByRole("link", {name: "订阅源"})).toBeVisible();
     expect(screen.getByRole("link", {name: "工作流"})).toBeVisible();
-    expect(localStorage.getItem("zeromind_token")).toBe("token");
+    expect(screen.queryByRole("button", {name: "登录"})).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", {name: "退出"})).not.toBeInTheDocument();
   });
 
   it("shows subscription list errors without losing navigation", async () => {
-    localStorage.setItem("zeromind_token", "token");
     window.history.replaceState({}, "", "/subscriptions");
     vi.spyOn(globalThis, "fetch").mockResolvedValue(
       response({detail: {code: "database_unavailable"}}, 503)
@@ -206,7 +200,6 @@ describe("ZeroMind administration", () => {
   });
 
   it("previews an OPML file before importing it", async () => {
-    localStorage.setItem("zeromind_token", "token");
     window.history.replaceState({}, "", "/subscriptions");
     vi.spyOn(globalThis, "fetch")
       .mockResolvedValueOnce(response({items: []}))
@@ -236,7 +229,6 @@ describe("ZeroMind administration", () => {
   });
 
   it("submits an RSSHub locator without browser URL rejection", async () => {
-    localStorage.setItem("zeromind_token", "token");
     window.history.replaceState({}, "", "/subscriptions");
     let submitted: Record<string, string> | undefined;
     vi.spyOn(globalThis, "fetch").mockImplementation(async (_input, init) => {
@@ -276,7 +268,6 @@ describe("ZeroMind administration", () => {
   });
 
   it("registers an RSSHub instance without echoing its access key", async () => {
-    localStorage.setItem("zeromind_token", "token");
     window.history.replaceState({}, "", "/rsshub");
     let submitted: Record<string, unknown> | undefined;
     let instances: unknown[] = [];
@@ -324,7 +315,6 @@ describe("ZeroMind administration", () => {
   });
 
   it("activates a configured RSSHub instance", async () => {
-    localStorage.setItem("zeromind_token", "token");
     window.history.replaceState({}, "", "/rsshub");
     let instances = [
       {
@@ -372,7 +362,6 @@ describe("ZeroMind administration", () => {
   });
 
   it("can explicitly clear a saved RSSHub access key while editing", async () => {
-    localStorage.setItem("zeromind_token", "token");
     window.history.replaceState({}, "", "/rsshub");
     const instance = {
       id: "primary",
@@ -405,7 +394,6 @@ describe("ZeroMind administration", () => {
   });
 
   it("shows registered agent configuration history", async () => {
-    localStorage.setItem("zeromind_token", "token");
     window.history.replaceState({}, "", "/agents");
     const agent = {
       id: "33333333-3333-3333-3333-333333333333",
@@ -444,7 +432,6 @@ describe("ZeroMind administration", () => {
   });
 
   it("renders workflow validation errors returned by the API", async () => {
-    localStorage.setItem("zeromind_token", "token");
     window.history.replaceState({}, "", "/workflows");
     vi.spyOn(globalThis, "fetch")
       .mockResolvedValueOnce(response({items: []}))
@@ -463,7 +450,6 @@ describe("ZeroMind administration", () => {
   });
 
   it("shows workflow projection, terminal gates, and validation warnings", async () => {
-    localStorage.setItem("zeromind_token", "token");
     window.history.replaceState({}, "", "/workflows");
     vi.spyOn(globalThis, "fetch")
       .mockResolvedValueOnce(response({items: []}))
@@ -499,21 +485,19 @@ describe("ZeroMind administration", () => {
     ).toBeVisible();
   });
 
-  it("returns to login when the administrator token expires", async () => {
-    localStorage.setItem("zeromind_token", "expired");
-    window.history.replaceState({}, "", "/references");
+  it("shows an API error without redirecting to login", async () => {
+    window.history.replaceState({}, "", "/subscriptions");
     vi.spyOn(globalThis, "fetch").mockResolvedValue(
-      response({detail: {code: "authentication_required"}}, 401)
+      response({detail: {code: "upstream_unauthorized"}}, 401)
     );
-
     render(<App />);
 
-    expect(await screen.findByRole("button", {name: "登录"})).toBeVisible();
-    expect(localStorage.getItem("zeromind_token")).toBeNull();
+    expect(await screen.findByRole("alert")).toHaveTextContent("加载失败");
+    expect(screen.getByRole("link", {name: "订阅源"})).toBeVisible();
+    expect(screen.queryByRole("button", {name: "登录"})).not.toBeInTheDocument();
   });
 
   it("combines pending references, linked runs, and unlinked runs in one ledger", async () => {
-    localStorage.setItem("zeromind_token", "token");
     window.history.replaceState({}, "", "/runs");
     const pending = {
       ...referenceListItem,
@@ -547,7 +531,6 @@ describe("ZeroMind administration", () => {
   });
 
   it("redirects a legacy reference URL and previews original content lazily", async () => {
-    localStorage.setItem("zeromind_token", "token");
     window.history.replaceState({}, "", `/references/${analysisCard.reference_id}`);
     vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
       const url = String(input);
@@ -568,7 +551,6 @@ describe("ZeroMind administration", () => {
   });
 
   it("shows RSS fallback when transient extraction fails", async () => {
-    localStorage.setItem("zeromind_token", "token");
     window.history.replaceState({}, "", `/runs?reference=${analysisCard.reference_id}`);
     vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
       const url = String(input);
@@ -589,7 +571,6 @@ describe("ZeroMind administration", () => {
   });
 
   it("shows structured analysis and Agent sessions inside the expanded ledger row", async () => {
-    localStorage.setItem("zeromind_token", "token");
     window.history.replaceState({}, "", `/runs?reference=${analysisCard.reference_id}`);
     vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
       const url = String(input);
@@ -612,7 +593,6 @@ describe("ZeroMind administration", () => {
   });
 
   it("requeues failed references from the unified ledger", async () => {
-    localStorage.setItem("zeromind_token", "token");
     window.history.replaceState({}, "", "/runs");
     const failed = {
       ...referenceListItem,
@@ -639,7 +619,6 @@ describe("ZeroMind administration", () => {
   });
 
   it("renders the structured information flow in Chinese", async () => {
-    localStorage.setItem("zeromind_token", "token");
     window.history.replaceState({}, "", "/analyses");
     const requestedUrls: string[] = [];
     vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
@@ -680,7 +659,6 @@ describe("ZeroMind administration", () => {
   });
 
   it("renders analysis details and submits a manual decision override", async () => {
-    localStorage.setItem("zeromind_token", "token");
     window.history.replaceState(
       {},
       "",
@@ -733,7 +711,6 @@ describe("ZeroMind administration", () => {
   });
 
   it("creates, edits, and deletes a reading note from analysis details", async () => {
-    localStorage.setItem("zeromind_token", "token");
     window.history.replaceState(
       {},
       "",
@@ -817,7 +794,6 @@ describe("ZeroMind administration", () => {
   });
 
   it("keeps analysis content visible when reading notes fail to load", async () => {
-    localStorage.setItem("zeromind_token", "token");
     window.history.replaceState(
       {},
       "",

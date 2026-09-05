@@ -119,7 +119,7 @@ Run:
 
 ```bash
 test -f apps/information/pyproject.toml
-test -f apps/information/migrations/env.py
+test -f apps/information/init-sql/env.py
 test -d apps/information/tests
 test -f apps/information/docs/operations.md
 test -f apps/web/package.json

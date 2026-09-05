@@ -19,7 +19,7 @@
 - 工作流和分析投影都必须幂等。
 - 现有工作流 DSL 保持兼容；未声明 `projection` 的工作流继续返回任意 JSON 对象。
 - 不实现比较阅读、多用户注册、个性化学习、收藏、划线、语义搜索、长文 Map/Reduce 或主题聚类。
-- 当前工作树中的 `backend/migrations/env.py`、`backend/src/zeromind/shared/migration_config.py` 和 `backend/tests/test_migration_config.py` 属于已有无关改动，任何提交都不得暂存它们。
+- 当前工作树中的 `backend/init-sql/env.py`、`backend/src/zeromind/shared/migration_config.py` 和 `backend/tests/test_migration_config.py` 属于已有无关改动，任何提交都不得暂存它们。
 - 所有功能改动执行测试驱动开发：先提交失败测试证据，再写最小实现，再运行对应测试。
 - 每个任务只提交其文件清单内的改动。
 
@@ -521,7 +521,7 @@ git commit -m "feat: add safe workflow scoring and gates"
 - Create: `backend/src/zeromind/analysis/schema.py`
 - Create: `backend/src/zeromind/analysis/models.py`
 - Create: `backend/src/zeromind/analysis/repository.py`
-- Create: `backend/migrations/versions/0008_content_analyses.py`
+- Create: `backend/init-sql/versions/0008_content_analyses.py`
 - Test: `backend/tests/analysis/test_schema.py`
 - Test: `backend/tests/analysis/test_domain.py`
 - Test: `backend/tests/analysis/test_repository.py`
@@ -899,7 +899,7 @@ Run:
 cd backend
 ../.venv/bin/pytest tests/analysis -q
 ../.venv/bin/alembic upgrade head --sql >/tmp/zeromind-analysis-migration.sql
-../.venv/bin/ruff check src/zeromind/analysis tests/analysis migrations/versions/0008_content_analyses.py
+../.venv/bin/ruff check src/zeromind/analysis tests/analysis init-sql/versions/0008_content_analyses.py
 ../.venv/bin/mypy src
 ```
 
@@ -910,7 +910,7 @@ Expected: 全部测试通过；Alembic SQL 生成成功；ruff 和 mypy 无错�
 ```bash
 git add \
   backend/src/zeromind/analysis \
-  backend/migrations/versions/0008_content_analyses.py \
+  backend/init-sql/versions/0008_content_analyses.py \
   backend/tests/analysis
 git commit -m "feat: persist canonical content analyses"
 ```
@@ -1352,7 +1352,7 @@ git commit -m "feat: expose analysis feed and decision overrides"
 - Create: `backend/src/zeromind/notes/repository.py`
 - Create: `backend/src/zeromind/notes/service.py`
 - Create: `backend/src/zeromind/notes/api.py`
-- Create: `backend/migrations/versions/0009_notes.py`
+- Create: `backend/init-sql/versions/0009_notes.py`
 - Modify: `backend/src/zeromind/bootstrap/app.py`
 - Modify: `backend/src/zeromind/analysis/api.py`
 - Test: `backend/tests/notes/test_domain.py`
@@ -1549,7 +1549,7 @@ Run:
 cd backend
 ../.venv/bin/pytest tests/notes tests/analysis/test_api.py -q
 ../.venv/bin/alembic upgrade head --sql >/tmp/zeromind-notes-migration.sql
-../.venv/bin/ruff check src/zeromind/notes tests/notes migrations/versions/0009_notes.py
+../.venv/bin/ruff check src/zeromind/notes tests/notes init-sql/versions/0009_notes.py
 ../.venv/bin/mypy src
 ```
 
@@ -1562,7 +1562,7 @@ git add \
   backend/src/zeromind/notes \
   backend/src/zeromind/analysis/api.py \
   backend/src/zeromind/bootstrap/app.py \
-  backend/migrations/versions/0009_notes.py \
+  backend/init-sql/versions/0009_notes.py \
   backend/tests/notes
 git commit -m "feat: add owned reading notes"
 ```
@@ -2000,7 +2000,7 @@ Run:
 ```bash
 cd backend
 ../.venv/bin/pytest -q
-../.venv/bin/ruff check src tests migrations
+../.venv/bin/ruff check src tests init-sql
 ../.venv/bin/mypy src
 ```
 

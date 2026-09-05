@@ -16,8 +16,11 @@ from zeromind.ingestion.read_models import (
 )
 from zeromind.ingestion.repository import InMemoryReferenceRepository
 from zeromind.ingestion.service import IngestionService
-from zeromind.subscriptions.domain import Subscription
-from zeromind.subscriptions.repository import InMemorySubscriptionRepository
+from zeromind.subscriptions.domain.aggregates.subscription import Subscription
+from zeromind.subscriptions.infrastructure.persistence.in_memory_subscription_repository import (
+    InMemorySubscriptionRepository,
+)
+from zeromind.subscriptions.public import SubscriptionService
 from zeromind.workflows.constants import MAIN_ANALYSIS_WORKFLOW_NAME
 from zeromind.workflows.domain import WorkflowDefinition
 from zeromind.workflows.dsl import WorkflowSpec
@@ -116,7 +119,7 @@ async def _service() -> tuple[ReferenceReadService, tuple[UUID, UUID]]:
         now=NOW,
     )
     return (
-        ReferenceReadService(references, subscriptions, analyses, workflows),
+        ReferenceReadService(references, SubscriptionService(subscriptions), analyses, workflows),
         (first.id, second.id),
     )
 

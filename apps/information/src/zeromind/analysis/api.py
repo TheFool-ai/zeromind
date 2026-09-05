@@ -2,14 +2,12 @@ from datetime import datetime
 from typing import Literal
 from uuid import UUID
 
-from fastapi import APIRouter, HTTPException, Query, Request, status
+from fastapi import APIRouter, HTTPException, Query, status
 from pydantic import BaseModel, ConfigDict, Field
 
 from zeromind.analysis.domain import ContentAnalysis
 from zeromind.analysis.repository import AnalysisQuery, AnalysisSort
 from zeromind.analysis.service import AnalysisService, decode_cursor
-from zeromind.identity.context import request_identity
-from zeromind.identity.tokens import AdminIdentity
 from zeromind.notes.domain import Note
 from zeromind.notes.service import NoteService
 
@@ -260,7 +258,6 @@ def create_analysis_router(
     @router.get("/{analysis_id}", response_model=AnalysisDetailResponse)
     async def get_analysis(
         analysis_id: UUID,
-        request: Request,
     ) -> AnalysisDetailResponse:
         try:
             analysis = await service.get(analysis_id)
@@ -270,10 +267,8 @@ def create_analysis_router(
                 detail={"code": "analysis_not_found"},
             ) from error
         notes: tuple[Note, ...] = ()
-        identity = getattr(request.state, "identity", None)
-        if note_service is not None and isinstance(identity, AdminIdentity):
-            notes = await note_service.list_owned(
-                identity.username,
+        if note_service is not None:
+            notes = await note_service.list(
                 reference_id=analysis.reference_id,
             )
         return AnalysisDetailResponse.from_domain(analysis, notes=notes)
@@ -285,15 +280,13 @@ def create_analysis_router(
     async def override_analysis(
         analysis_id: UUID,
         payload: CreateOverrideRequest,
-        request: Request,
     ) -> AnalysisDetailResponse:
-        identity = request_identity(request)
         try:
             analysis = await service.override(
                 analysis_id,
                 decision=payload.decision,
                 reason=payload.reason,
-                actor_subject=identity.username,
+                actor_subject="local",
             )
         except KeyError as error:
             raise HTTPException(
@@ -306,8 +299,7 @@ def create_analysis_router(
                 detail={"code": "invalid_override", "message": str(error)},
             ) from error
         notes = (
-            await note_service.list_owned(
-                identity.username,
+            await note_service.list(
                 reference_id=analysis.reference_id,
             )
             if note_service is not None

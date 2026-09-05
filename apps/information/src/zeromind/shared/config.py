@@ -16,9 +16,6 @@ class Settings(BaseSettings):
     redis_url: str = "redis://localhost:6379/0"
     rsshub_private_hosts: str = ""
     pi_command: str = "node /app/pi-runner/dist/main.js"
-    admin_username: str = "admin"
-    admin_password: str = Field(default="change-me", repr=False)
-    token_secret: str = Field(default="development-only-secret", repr=False)
     credential_secret: str = Field(
         default="development-only-credential-secret",
         repr=False,

@@ -4,8 +4,10 @@ from zeromind.bootstrap.app import create_app
 from zeromind.rsshub.credentials import CredentialCipher
 from zeromind.rsshub.repository import InMemoryRSSHubInstanceRepository
 from zeromind.rsshub.service import RSSHubInstanceService
-from zeromind.subscriptions.repository import InMemorySubscriptionRepository
-from zeromind.subscriptions.service import SubscriptionService
+from zeromind.subscriptions.infrastructure.persistence.in_memory_subscription_repository import (
+    InMemorySubscriptionRepository,
+)
+from zeromind.subscriptions.public import SubscriptionService
 
 
 def make_client() -> TestClient:

@@ -4,7 +4,7 @@ from urllib.parse import quote_plus, unquote_plus
 from zeromind.rsshub.credentials import CredentialCipher
 from zeromind.rsshub.domain import RSSHubAuthenticationMode
 from zeromind.rsshub.repository import RSSHubInstanceRepository
-from zeromind.subscriptions.domain import normalize_feed_url
+from zeromind.subscriptions.public import FeedAddress
 
 
 class RSSHubInstanceNotConfiguredError(ValueError):
@@ -35,7 +35,7 @@ class RSSHubResolver:
         if locator[:9].lower() != "rsshub://":
             return locator
 
-        normalized = normalize_feed_url(locator)
+        normalized = FeedAddress.parse(locator).value
         instance = await self._repository.get_active()
         if instance is None or not instance.enabled:
             raise RSSHubInstanceNotConfiguredError(

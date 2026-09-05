@@ -1,8 +1,8 @@
-from collections.abc import AsyncIterator, Awaitable, Callable
+from collections.abc import AsyncIterator, Callable
 from contextlib import asynccontextmanager
 from typing import Literal
 
-from fastapi import FastAPI, Request, Response
+from fastapi import FastAPI
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
@@ -34,8 +34,6 @@ from zeromind.delivery.repository import (
     SqlAlchemyWebhookRepository,
     WebhookRepository,
 )
-from zeromind.identity.api import create_identity_router
-from zeromind.identity.tokens import InvalidToken, TokenService
 from zeromind.ingestion.analysis_queue import (
     InMemoryReferenceAnalysisQueue,
     ReferenceAnalysisQueue,
@@ -70,13 +68,15 @@ from zeromind.rsshub.service import RSSHubInstanceService
 from zeromind.shared.config import get_settings
 from zeromind.shared.database import Database, create_database
 from zeromind.shared.outbox import InMemoryOutboxRepository
-from zeromind.subscriptions.api import create_subscription_router
-from zeromind.subscriptions.repository import (
-    InMemorySubscriptionRepository,
-    SqlAlchemySubscriptionRepository,
+from zeromind.subscriptions.domain.repositories.subscription_repository import (
     SubscriptionRepository,
 )
-from zeromind.subscriptions.service import SubscriptionService
+from zeromind.subscriptions.infrastructure.opml.xml_opml_parser import XmlOpmlParser
+from zeromind.subscriptions.infrastructure.persistence.sqlalchemy_subscription_repository import (
+    SqlAlchemySubscriptionRepository,
+)
+from zeromind.subscriptions.interfaces.http.routes import create_subscription_router
+from zeromind.subscriptions.public import SubscriptionService
 from zeromind.workflows.api import create_workflow_router
 from zeromind.workflows.repository import (
     InMemoryWorkflowRepository,
@@ -115,12 +115,10 @@ def create_app(
     analysis_repository: AnalysisRepository | None = None,
     note_repository: NoteRepository | None = None,
     workflow_run_service: WorkflowRunService | None = None,
-    token_service: TokenService | None = None,
     webhook_repository: WebhookRepository | None = None,
     webhook_network_policy: NetworkPolicy | None = None,
     rsshub_service: RSSHubInstanceService | None = None,
     content_resolver: ContentResolver | None = None,
-    require_auth: bool = False,
 ) -> FastAPI:
     resolved_database = database
     resolved_subscription_repository = subscription_repository
@@ -131,7 +129,7 @@ def create_app(
                 resolved_database.sessions
             )
         subscription_service = SubscriptionService(
-            resolved_subscription_repository
+            resolved_subscription_repository, opml_parser=XmlOpmlParser(),
         )
 
     @asynccontextmanager
@@ -149,36 +147,6 @@ def create_app(
     )
     probe = readiness_probe or _default_readiness_probe
     settings = get_settings()
-    resolved_token_service = token_service or TokenService(settings)
-
-    @app.middleware("http")
-    async def authenticate_admin_api(
-        request: Request,
-        call_next: Callable[[Request], Awaitable[Response]],
-    ) -> Response:
-        api_request = (
-            request.method != "OPTIONS"
-            and request.url.path.startswith("/api/v1/")
-            and request.url.path != "/api/v1/auth/token"
-        )
-        if api_request:
-            authorization = request.headers.get("authorization", "")
-            scheme, _, token = authorization.partition(" ")
-            if scheme.lower() == "bearer" and token:
-                try:
-                    request.state.identity = resolved_token_service.verify(token)
-                except InvalidToken:
-                    return JSONResponse(
-                        status_code=401,
-                        content={"detail": {"code": "authentication_required"}},
-                    )
-            elif require_auth:
-                return JSONResponse(
-                    status_code=401,
-                    content={"detail": {"code": "authentication_required"}},
-                )
-        return await call_next(request)
-
     app.include_router(create_subscription_router(subscription_service))
     if rsshub_service is None:
         rsshub_service = RSSHubInstanceService(
@@ -241,9 +209,7 @@ def create_app(
         reference_repository,
         analysis_repository,
     )
-    read_subscriptions = (
-        resolved_subscription_repository or InMemorySubscriptionRepository()
-    )
+    read_subscriptions = subscription_service
     app.include_router(
         create_reference_router(
             reference_repository,
@@ -302,7 +268,6 @@ def create_app(
         )
     )
     app.include_router(create_note_router(note_service))
-    app.include_router(create_identity_router(resolved_token_service))
     if webhook_repository is None:
         webhook_repository = (
             SqlAlchemyWebhookRepository(resolved_database.sessions)
@@ -339,4 +304,4 @@ def create_app(
     return app
 
 
-app = create_app(require_auth=True)
+app = create_app()

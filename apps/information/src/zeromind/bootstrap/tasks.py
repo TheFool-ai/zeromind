@@ -33,11 +33,10 @@ from zeromind.shared.outbox import (
     OutboxRepository,
     SqlAlchemyOutboxRepository,
 )
-from zeromind.subscriptions.domain import Subscription
-from zeromind.subscriptions.repository import (
+from zeromind.subscriptions.infrastructure.persistence.sqlalchemy_subscription_repository import (
     SqlAlchemySubscriptionRepository,
-    SubscriptionRepository,
 )
+from zeromind.subscriptions.public import SubscriptionService, SubscriptionView
 from zeromind.workflows.constants import MAIN_ANALYSIS_WORKFLOW_NAME
 from zeromind.workflows.domain import WorkflowDefinition
 from zeromind.workflows.repository import (
@@ -55,17 +54,17 @@ def overlap_window_start(last_checked_at: datetime) -> datetime:
 
 
 class DueFeedScheduler:
-    def __init__(self, repository: SubscriptionRepository) -> None:
-        self._repository = repository
+    def __init__(self, subscriptions: SubscriptionService) -> None:
+        self._subscriptions = subscriptions
 
     async def claim_due(
         self,
         *,
         now: datetime,
         limit: int = 1000,
-    ) -> tuple[Subscription, ...]:
+    ) -> tuple[SubscriptionView, ...]:
         return tuple(
-            await self._repository.claim_due(
+            await self._subscriptions.claim_due(
                 now=now,
                 limit=limit,
                 lease=POLL_INTERVAL,
@@ -160,7 +159,7 @@ async def dispatch_workflow_event(
 
 
 async def fetch_subscription_document(
-    subscription: Subscription,
+    subscription: SubscriptionView,
     *,
     resolver: RSSHubResolver,
     feed_client: FeedClient,
@@ -177,7 +176,7 @@ async def _schedule_due_feeds() -> int:
     database = create_database()
     try:
         repository = SqlAlchemySubscriptionRepository(database.sessions)
-        due = await DueFeedScheduler(repository).claim_due(
+        due = await DueFeedScheduler(SubscriptionService(repository)).claim_due(
             now=datetime.now(UTC),
             limit=1000,
         )
@@ -196,7 +195,7 @@ def schedule_due_feeds() -> int:
 async def _poll_feed(subscription_id: str) -> dict[str, int]:
     database = create_database()
     settings = get_settings()
-    subscriptions = SqlAlchemySubscriptionRepository(database.sessions)
+    subscriptions = SubscriptionService(SqlAlchemySubscriptionRepository(database.sessions))
     references = SqlAlchemyReferenceRepository(database.sessions)
     outbox = SqlAlchemyOutboxRepository(database.sessions)
     identifier = uuid.UUID(subscription_id)
@@ -241,7 +240,8 @@ async def _poll_feed(subscription_id: str) -> dict[str, int]:
                     idempotency_key=event.idempotency_key,
                     now=checked_at,
                 )
-            subscription.mark_success(
+            await subscriptions.record_success(
+                identifier,
                 now=checked_at,
                 etag=document.etag,
                 last_modified=document.last_modified,
@@ -252,17 +252,16 @@ async def _poll_feed(subscription_id: str) -> dict[str, int]:
                 "unchanged": result.unchanged,
             }
         else:
-            subscription.mark_success(
+            await subscriptions.record_success(
+                identifier,
                 now=checked_at,
                 etag=subscription.etag,
                 last_modified=subscription.last_modified,
             )
             counts = {"discovered": 0, "updated": 0, "unchanged": 0}
-        await subscriptions.save(subscription)
         return counts
     except Exception:
-        subscription.mark_failure(now=checked_at)
-        await subscriptions.save(subscription)
+        await subscriptions.record_failure(identifier, now=checked_at)
         raise
     finally:
         await database.dispose()
@@ -281,7 +280,7 @@ async def _dispatch_outbox() -> int:
     references = SqlAlchemyReferenceRepository(database.sessions)
     agents = AgentRegistry(SqlAlchemyAgentRepository(database.sessions))
     agent_sessions = SqlAlchemyAgentSessionRepository(database.sessions)
-    subscriptions = SqlAlchemySubscriptionRepository(database.sessions)
+    subscriptions = SubscriptionService(SqlAlchemySubscriptionRepository(database.sessions))
     analyses = SqlAlchemyAnalysisRepository(database.sessions)
     webhooks = SqlAlchemyWebhookRepository(database.sessions)
     workflow_observer = ReferenceAnalysisLifecycleObserver(

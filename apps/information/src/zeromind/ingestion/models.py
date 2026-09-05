@@ -14,7 +14,9 @@ from sqlalchemy import (
 from sqlalchemy.orm import Mapped, mapped_column
 
 from zeromind.shared.models import Base
-from zeromind.subscriptions.models import SubscriptionModel  # noqa: F401
+from zeromind.subscriptions.infrastructure.persistence.subscription_model import (
+    SubscriptionModel,  # noqa: F401
+)
 from zeromind.workflows.models import WorkflowRunModel  # noqa: F401
 
 

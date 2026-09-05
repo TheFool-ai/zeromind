@@ -89,28 +89,26 @@ async def service_context() -> tuple[
 
 
 @pytest.mark.asyncio
-async def test_service_creates_lists_updates_and_deletes_owned_note() -> None:
+async def test_service_creates_lists_updates_and_deletes_shared_note() -> None:
     service, _, reference_id, _ = await service_context()
 
     created = await service.create(
-        owner_subject="admin",
         reference_id=reference_id,
         analysis_id=UUID("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"),
         body="Initial insight",
     )
-    listed = await service.list_owned("admin", reference_id=reference_id)
+    listed = await service.list(reference_id=reference_id)
     updated = await service.update(
         created.id,
-        owner_subject="admin",
         body="Updated insight",
         analysis_id=None,
     )
-    await service.delete(created.id, owner_subject="admin")
+    await service.delete(created.id)
 
     assert [item.id for item in listed] == [created.id]
     assert updated.body == "Updated insight"
     assert updated.analysis_id is None
-    assert await service.list_owned("admin", reference_id=reference_id) == ()
+    assert await service.list(reference_id=reference_id) == ()
 
 
 @pytest.mark.asyncio
@@ -119,7 +117,6 @@ async def test_service_requires_existing_reference() -> None:
 
     with pytest.raises(ValueError, match="reference_not_found"):
         await service.create(
-            owner_subject="admin",
             reference_id=UUID(
                 "99999999-9999-9999-9999-999999999999"
             ),
@@ -134,7 +131,6 @@ async def test_service_rejects_analysis_from_another_reference() -> None:
 
     with pytest.raises(ValueError, match="analysis_reference_mismatch"):
         await service.create(
-            owner_subject="admin",
             reference_id=second_reference_id,
             analysis_id=UUID("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"),
             body="Insight",
@@ -142,24 +138,13 @@ async def test_service_rejects_analysis_from_another_reference() -> None:
 
 
 @pytest.mark.asyncio
-async def test_service_hides_notes_from_other_owners() -> None:
-    service, _, reference_id, _ = await service_context()
-    created = await service.create(
-        owner_subject="admin",
-        reference_id=reference_id,
-        analysis_id=None,
-        body="Private insight",
-    )
-
+async def test_service_rejects_missing_note() -> None:
+    service, _, _, _ = await service_context()
+    missing = UUID("99999999-9999-9999-9999-999999999999")
     with pytest.raises(KeyError):
-        await service.update(
-            created.id,
-            owner_subject="other",
-            body="Changed",
-            analysis_id=None,
-        )
+        await service.update(missing, body="Changed", analysis_id=None)
     with pytest.raises(KeyError):
-        await service.delete(created.id, owner_subject="other")
+        await service.delete(missing)
 
 
 @pytest.mark.asyncio
@@ -170,14 +155,12 @@ async def test_note_operations_do_not_modify_analysis() -> None:
     )
 
     note = await service.create(
-        owner_subject="admin",
         reference_id=reference_id,
         analysis_id=UUID("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"),
         body="Insight",
     )
     await service.update(
         note.id,
-        owner_subject="admin",
         body="Updated",
         analysis_id=None,
     )

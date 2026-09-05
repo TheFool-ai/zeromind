@@ -29,8 +29,8 @@
 - Create: `backend/src/zeromind/shared/models.py`
 - Create: `backend/tests/test_health.py`
 - Create: `backend/alembic.ini`
-- Create: `backend/migrations/env.py`
-- Create: `backend/migrations/versions/0001_initial.py`
+- Create: `backend/init-sql/env.py`
+- Create: `backend/init-sql/versions/0001_initial.py`
 
 **Interfaces:**
 - Produces: `create_app() -> FastAPI`, `Settings`, SQLAlchemy `Base`, session provider, `/health/live`, `/health/ready`.

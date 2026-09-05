@@ -10,9 +10,11 @@ from zeromind.bootstrap.app import create_app
 from zeromind.ingestion.domain import FeedEntry
 from zeromind.ingestion.repository import InMemoryReferenceRepository
 from zeromind.ingestion.service import IngestionService
-from zeromind.subscriptions.domain import Subscription
-from zeromind.subscriptions.repository import InMemorySubscriptionRepository
-from zeromind.subscriptions.service import SubscriptionService
+from zeromind.subscriptions.domain.aggregates.subscription import Subscription
+from zeromind.subscriptions.infrastructure.persistence.in_memory_subscription_repository import (
+    InMemorySubscriptionRepository,
+)
+from zeromind.subscriptions.public import SubscriptionService
 from zeromind.workflows.executor import NodeExecutionContext, WorkflowExecutor
 from zeromind.workflows.repository import InMemoryWorkflowRepository
 from zeromind.workflows.service import WorkflowRunService

@@ -13,15 +13,13 @@ from zeromind.notes.models import NoteModel
 class NoteRepository(Protocol):
     async def add(self, note: Note) -> None: ...
 
-    async def get_owned(
+    async def get(
         self,
         note_id: uuid.UUID,
-        owner_subject: str,
     ) -> Note | None: ...
 
-    async def list_owned(
+    async def list(
         self,
-        owner_subject: str,
         *,
         reference_id: uuid.UUID | None = None,
         analysis_id: uuid.UUID | None = None,
@@ -32,7 +30,6 @@ class NoteRepository(Protocol):
     async def delete(
         self,
         note_id: uuid.UUID,
-        owner_subject: str,
     ) -> None: ...
 
 
@@ -49,19 +46,17 @@ class InMemoryNoteRepository:
             raise ValueError("duplicate note")
         self._notes[note.id] = self._copy(note)
 
-    async def get_owned(
+    async def get(
         self,
         note_id: uuid.UUID,
-        owner_subject: str,
     ) -> Note | None:
         note = self._notes.get(note_id)
-        if note is None or note.owner_subject != owner_subject:
+        if note is None:
             return None
         return self._copy(note)
 
-    async def list_owned(
+    async def list(
         self,
-        owner_subject: str,
         *,
         reference_id: uuid.UUID | None = None,
         analysis_id: uuid.UUID | None = None,
@@ -69,8 +64,7 @@ class InMemoryNoteRepository:
         items = [
             note
             for note in self._notes.values()
-            if note.owner_subject == owner_subject
-            and (reference_id is None or note.reference_id == reference_id)
+            if (reference_id is None or note.reference_id == reference_id)
             and (analysis_id is None or note.analysis_id == analysis_id)
         ]
         items.sort(key=lambda item: (item.created_at, item.id))
@@ -78,17 +72,16 @@ class InMemoryNoteRepository:
 
     async def save(self, note: Note) -> None:
         current = self._notes.get(note.id)
-        if current is None or current.owner_subject != note.owner_subject:
+        if current is None:
             raise KeyError(note.id)
         self._notes[note.id] = self._copy(note)
 
     async def delete(
         self,
         note_id: uuid.UUID,
-        owner_subject: str,
     ) -> None:
         note = self._notes.get(note_id)
-        if note is not None and note.owner_subject == owner_subject:
+        if note is not None:
             del self._notes[note_id]
 
 
@@ -128,30 +121,25 @@ class SqlAlchemyNoteRepository:
         async with self._sessions() as session, session.begin():
             session.add(_to_model(note))
 
-    async def get_owned(
+    async def get(
         self,
         note_id: uuid.UUID,
-        owner_subject: str,
     ) -> Note | None:
         async with self._sessions() as session:
             model = await session.scalar(
                 select(NoteModel).where(
                     NoteModel.id == note_id,
-                    NoteModel.owner_subject == owner_subject,
                 )
             )
             return _to_domain(model) if model else None
 
-    async def list_owned(
+    async def list(
         self,
-        owner_subject: str,
         *,
         reference_id: uuid.UUID | None = None,
         analysis_id: uuid.UUID | None = None,
     ) -> tuple[Note, ...]:
-        statement = select(NoteModel).where(
-            NoteModel.owner_subject == owner_subject
-        )
+        statement = select(NoteModel)
         if reference_id is not None:
             statement = statement.where(NoteModel.reference_id == reference_id)
         if analysis_id is not None:
@@ -166,7 +154,6 @@ class SqlAlchemyNoteRepository:
             model = await session.scalar(
                 select(NoteModel).where(
                     NoteModel.id == note.id,
-                    NoteModel.owner_subject == note.owner_subject,
                 )
             )
             if model is None:
@@ -178,12 +165,10 @@ class SqlAlchemyNoteRepository:
     async def delete(
         self,
         note_id: uuid.UUID,
-        owner_subject: str,
     ) -> None:
         async with self._sessions() as session, session.begin():
             await session.execute(
                 delete(NoteModel).where(
                     NoteModel.id == note_id,
-                    NoteModel.owner_subject == owner_subject,
                 )
             )

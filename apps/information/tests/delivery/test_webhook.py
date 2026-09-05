@@ -14,8 +14,10 @@ from zeromind.delivery.domain import WebhookEndpoint
 from zeromind.delivery.repository import InMemoryWebhookRepository
 from zeromind.delivery.service import WebhookDeliveryService
 from zeromind.ingestion.repository import InMemoryReferenceRepository
-from zeromind.subscriptions.repository import InMemorySubscriptionRepository
-from zeromind.subscriptions.service import SubscriptionService
+from zeromind.subscriptions.infrastructure.persistence.in_memory_subscription_repository import (
+    InMemorySubscriptionRepository,
+)
+from zeromind.subscriptions.public import SubscriptionService
 
 
 @pytest.mark.asyncio

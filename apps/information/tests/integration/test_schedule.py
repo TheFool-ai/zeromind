@@ -18,8 +18,11 @@ from zeromind.rsshub.repository import InMemoryRSSHubInstanceRepository
 from zeromind.rsshub.resolver import RSSHubResolver
 from zeromind.rsshub.service import RSSHubInstanceService
 from zeromind.shared.outbox import InMemoryOutboxRepository
-from zeromind.subscriptions.domain import Subscription
-from zeromind.subscriptions.repository import InMemorySubscriptionRepository
+from zeromind.subscriptions.domain.aggregates.subscription import Subscription
+from zeromind.subscriptions.infrastructure.persistence.in_memory_subscription_repository import (
+    InMemorySubscriptionRepository,
+)
+from zeromind.subscriptions.public import SubscriptionService, SubscriptionView
 from zeromind.workflows.constants import MAIN_ANALYSIS_WORKFLOW_NAME
 from zeromind.workflows.domain import WorkflowDefinition, WorkflowRun
 from zeromind.workflows.dsl import parse_workflow_yaml
@@ -56,13 +59,17 @@ async def test_scheduler_claims_only_enabled_due_feeds_once() -> None:
     for item in (due, future, disabled):
         await repository.add(item)
 
-    scheduler = DueFeedScheduler(repository)
+    scheduler = DueFeedScheduler(SubscriptionService(repository))
     first = await scheduler.claim_due(now=now, limit=10)
     second = await scheduler.claim_due(now=now, limit=10)
 
     assert [item.id for item in first] == [due.id]
     assert second == ()
-    assert due.next_poll_at == now + timedelta(minutes=30)
+    persisted = await repository.get(due.id)
+    assert persisted is not None
+    assert persisted.next_poll_at == now + timedelta(minutes=30)
+    assert first[0].next_poll_at == persisted.next_poll_at
+    assert due.next_poll_at == now
 
 
 def test_poll_window_has_ten_minute_overlap() -> None:
@@ -97,7 +104,7 @@ async def test_poll_fetches_rsshub_subscription_through_active_instance() -> Non
     )
 
     document = await fetch_subscription_document(
-        subscription,
+        SubscriptionView.from_domain(subscription),
         resolver=RSSHubResolver(repository, cipher),
         feed_client=FeedClient(transport=httpx.MockTransport(handler)),
     )

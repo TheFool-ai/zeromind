@@ -1,5 +1,3 @@
-const TOKEN_KEY = "zeromind_token";
-
 export class ApiError extends Error {
   constructor(
     message: string,
@@ -7,18 +5,6 @@ export class ApiError extends Error {
     public readonly code?: string
   ) {
     super(message);
-  }
-}
-
-export function getToken(): string | null {
-  return localStorage.getItem(TOKEN_KEY);
-}
-
-export function setToken(token: string | null): void {
-  if (token) {
-    localStorage.setItem(TOKEN_KEY, token);
-  } else {
-    localStorage.removeItem(TOKEN_KEY);
   }
 }
 
@@ -43,16 +29,10 @@ export async function api<T>(
   init: RequestInit = {}
 ): Promise<T> {
   const headers = new Headers(init.headers);
-  const token = getToken();
-  if (token) headers.set("authorization", `Bearer ${token}`);
   if (init.body && !(init.body instanceof FormData)) {
     headers.set("content-type", "application/json");
   }
   const response = await fetch(`/api/v1${path}`, {...init, headers});
-  if (response.status === 401 && path !== "/auth/token") {
-    setToken(null);
-    window.dispatchEvent(new Event("zeromind:unauthorized"));
-  }
   return decode<T>(response);
 }
 

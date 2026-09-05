@@ -17,7 +17,7 @@ COPY apps/information/pyproject.toml ./
 COPY apps/information/src ./src
 RUN pip install --no-cache-dir .
 COPY apps/information/alembic.ini ./
-COPY apps/information/migrations ./migrations
+COPY apps/information/init-sql ./init-sql
 COPY apps/information/scripts ./scripts
 COPY apps/information/docs/examples /app/docs/examples
 COPY --from=pi-build /usr/local/bin/node /usr/local/bin/node

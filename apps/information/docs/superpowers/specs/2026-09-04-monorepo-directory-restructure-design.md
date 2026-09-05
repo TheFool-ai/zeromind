@@ -19,7 +19,7 @@ zeromind/
 │   ├── information/
 │   │   ├── src/
 │   │   ├── tests/
-│   │   ├── migrations/
+│   │   ├── init-sql/
 │   │   ├── scripts/
 │   │   ├── docs/
 │   │   ├── pyproject.toml

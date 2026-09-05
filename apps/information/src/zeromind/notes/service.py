@@ -17,15 +17,13 @@ class NoteService:
         self._references = references
         self._analyses = analyses
 
-    async def list_owned(
+    async def list(
         self,
-        owner_subject: str,
         *,
         reference_id: uuid.UUID | None = None,
         analysis_id: uuid.UUID | None = None,
     ) -> tuple[Note, ...]:
-        return await self._notes.list_owned(
-            owner_subject,
+        return await self._notes.list(
             reference_id=reference_id,
             analysis_id=analysis_id,
         )
@@ -33,7 +31,6 @@ class NoteService:
     async def create(
         self,
         *,
-        owner_subject: str,
         reference_id: uuid.UUID,
         analysis_id: uuid.UUID | None,
         body: str,
@@ -42,7 +39,7 @@ class NoteService:
         note = Note.create(
             reference_id=reference_id,
             analysis_id=analysis_id,
-            owner_subject=owner_subject,
+            owner_subject="local",
             body=body,
         )
         await self._notes.add(note)
@@ -52,11 +49,10 @@ class NoteService:
         self,
         note_id: uuid.UUID,
         *,
-        owner_subject: str,
         body: str,
         analysis_id: uuid.UUID | None,
     ) -> Note:
-        note = await self._notes.get_owned(note_id, owner_subject)
+        note = await self._notes.get(note_id)
         if note is None:
             raise KeyError(note_id)
         await self._validate_relationship(note.reference_id, analysis_id)
@@ -67,13 +63,11 @@ class NoteService:
     async def delete(
         self,
         note_id: uuid.UUID,
-        *,
-        owner_subject: str,
     ) -> None:
-        note = await self._notes.get_owned(note_id, owner_subject)
+        note = await self._notes.get(note_id)
         if note is None:
             raise KeyError(note_id)
-        await self._notes.delete(note_id, owner_subject)
+        await self._notes.delete(note_id)
 
     async def _validate_relationship(
         self,

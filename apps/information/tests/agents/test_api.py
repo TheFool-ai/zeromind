@@ -8,8 +8,10 @@ from zeromind.agents.session_domain import AgentExecutionContext, AgentSession
 from zeromind.agents.session_repository import InMemoryAgentSessionRepository
 from zeromind.bootstrap.app import create_app
 from zeromind.ingestion.repository import InMemoryReferenceRepository
-from zeromind.subscriptions.repository import InMemorySubscriptionRepository
-from zeromind.subscriptions.service import SubscriptionService
+from zeromind.subscriptions.infrastructure.persistence.in_memory_subscription_repository import (
+    InMemorySubscriptionRepository,
+)
+from zeromind.subscriptions.public import SubscriptionService
 
 
 def make_client() -> TestClient:

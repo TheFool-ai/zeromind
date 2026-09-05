@@ -1,2 +1,1 @@
 """RSS subscription bounded context."""
-

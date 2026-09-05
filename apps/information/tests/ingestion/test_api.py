@@ -16,8 +16,10 @@ from zeromind.ingestion.lifecycle import (
 from zeromind.ingestion.repository import InMemoryReferenceRepository
 from zeromind.ingestion.service import IngestionService
 from zeromind.shared.outbox import InMemoryOutboxRepository
-from zeromind.subscriptions.repository import InMemorySubscriptionRepository
-from zeromind.subscriptions.service import SubscriptionService
+from zeromind.subscriptions.infrastructure.persistence.in_memory_subscription_repository import (
+    InMemorySubscriptionRepository,
+)
+from zeromind.subscriptions.public import SubscriptionService
 
 
 def test_reference_list_and_detail_expose_metadata_not_article_body() -> None:

@@ -24,9 +24,11 @@ from zeromind.ingestion.repository import InMemoryReferenceRepository
 from zeromind.ingestion.service import IngestionService
 from zeromind.notes.repository import InMemoryNoteRepository
 from zeromind.notes.service import NoteService
-from zeromind.subscriptions.opml import preview_opml
-from zeromind.subscriptions.repository import InMemorySubscriptionRepository
-from zeromind.subscriptions.service import SubscriptionService
+from zeromind.subscriptions.infrastructure.opml.xml_opml_parser import XmlOpmlParser
+from zeromind.subscriptions.infrastructure.persistence.in_memory_subscription_repository import (
+    InMemorySubscriptionRepository,
+)
+from zeromind.subscriptions.public import SubscriptionService
 from zeromind.workflows.domain import WorkflowDefinition
 from zeromind.workflows.dsl import parse_workflow_yaml, validate_workflow
 from zeromind.workflows.executor import NodeExecutionContext, WorkflowExecutor
@@ -360,7 +362,7 @@ async def test_reference_first_information_flow(
     now = datetime(2026, 7, 31, 12, tzinfo=UTC)
     subscriptions = InMemorySubscriptionRepository()
     imported = await SubscriptionService(subscriptions).import_entries(
-        preview_opml(
+        XmlOpmlParser().preview(
             b"""<?xml version="1.0"?>
 <opml version="2.0"><body>
   <outline text="Example Engineering" type="rss"
@@ -368,7 +370,7 @@ async def test_reference_first_information_flow(
 </body></opml>"""
         ).entries
     )
-    subscription = (await subscriptions.list())[0]
+    subscription = (await SubscriptionService(subscriptions).list())[0]
     assert imported.created == 1
 
     rss = b"""<?xml version="1.0"?>
@@ -561,7 +563,7 @@ and structured analysis without retaining the original document.</p>
             "content_analysis_v1": AnalysisProjector(
                 analyses,
                 references,
-                subscriptions,
+                SubscriptionService(subscriptions),
             )
         },
     )
@@ -634,7 +636,6 @@ and structured analysis without retaining the original document.</p>
     assert overridden.generated_status == "fine_rejected"
     notes = InMemoryNoteRepository()
     created_note = await NoteService(notes, references, analyses).create(
-        owner_subject="admin",
         reference_id=by_title["Average"].reference_id,
         analysis_id=by_title["Average"].id,
         body="Reuse this scoring approach in architecture reviews.",
@@ -649,7 +650,7 @@ and structured analysis without retaining the original document.</p>
             await analyses.list(
                 AnalysisQuery(effective_decision=None, limit=100)
             ),
-            await notes.list_owned("admin"),
+            await notes.list(),
         )
     )
     assert ARTICLE_MARKER not in persisted_database_dump

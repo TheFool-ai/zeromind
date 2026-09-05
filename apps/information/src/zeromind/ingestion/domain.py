@@ -5,7 +5,7 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import Literal
 
-from zeromind.subscriptions.domain import normalize_feed_url
+from zeromind.subscriptions.public import FeedAddress
 
 
 @dataclass(frozen=True, slots=True)
@@ -35,7 +35,7 @@ def normalized_entry_url(value: str | None) -> str | None:
     if cleaned is None:
         return None
     try:
-        return normalize_feed_url(cleaned)
+        return FeedAddress.parse(cleaned).value
     except ValueError:
         return None
 

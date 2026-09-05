@@ -7,7 +7,7 @@ from zeromind.ingestion.models import ContentReferenceModel
 
 MIGRATION = (
     Path(__file__).resolve().parents[2]
-    / "migrations/versions/0011_reference_analysis_lifecycle.py"
+    / "init-sql/versions/0011_reference_analysis_lifecycle.py"
 )
 
 
