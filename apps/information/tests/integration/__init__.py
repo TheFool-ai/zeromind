@@ -1,2 +1,0 @@
-"""Cross-context integration tests."""
-

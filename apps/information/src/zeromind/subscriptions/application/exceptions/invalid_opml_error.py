@@ -1,2 +1,0 @@
-class InvalidOpmlError(ValueError):
-    pass

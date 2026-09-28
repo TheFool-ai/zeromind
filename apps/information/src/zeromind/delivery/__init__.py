@@ -1,2 +1,0 @@
-"""Signed webhook delivery context."""
-

@@ -1,2 +1,0 @@
-"""Declarative workflow bounded context."""
-

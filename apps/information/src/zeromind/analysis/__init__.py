@@ -1,1 +1,0 @@
-"""Structured content analysis domain."""

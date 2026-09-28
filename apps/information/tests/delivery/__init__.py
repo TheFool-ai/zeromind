@@ -1,2 +1,0 @@
-"""Delivery context tests."""
-

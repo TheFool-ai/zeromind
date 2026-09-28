@@ -1,2 +1,0 @@
-"""Ingestion context tests."""
-

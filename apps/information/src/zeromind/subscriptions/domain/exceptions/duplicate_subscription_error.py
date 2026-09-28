@@ -1,2 +1,0 @@
-class DuplicateSubscriptionError(ValueError):
-    pass

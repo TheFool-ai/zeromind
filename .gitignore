@@ -3,6 +3,8 @@
 .worktrees/
 .superpowers/
 .env
+.env.*
+!.env.example
 .venv/
 __pycache__/
 .pytest_cache/
@@ -15,9 +17,6 @@ htmlcov/
 dist/
 build/
 node_modules/
-apps/web/dist/
-apps/information/data/
+data/
 *.log
 *.tsbuildinfo
-apps/web/vite.config.js
-apps/web/vite.config.d.ts
