@@ -23,6 +23,6 @@ apps/
 
 旧项目完整保存在 Git 分支 `archive/pre-rebuild` 和标签 `pre-rebuild-2026-09-28`，对应提交 `8f8976384b471b349a7ea236f82c1c5b81a51cb6`。
 
-订阅服务功能分支为 `codex/feature-subscription-service`，从 `codex/rebuild` 创建。归档分支和标签目前仅保留在本地。
+订阅服务功能分支为 `feature/subscription-service`，从 `codex/rebuild` 创建。归档分支和标签目前仅保留在本地。
 
 本地环境文件不纳入版本控制。重构不操作已有数据库、Docker 容器或数据卷。
