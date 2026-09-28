@@ -20,3 +20,5 @@ node_modules/
 data/
 *.log
 *.tsbuildinfo
+apps/subscriptions/*.db
+apps/subscriptions/*.db-*

@@ -1,6 +1,13 @@
-# 项目设计约定
+# 项目知识库
 
-状态：重构起点。
+状态：订阅服务已实现来源管理 HTTP 与领域/仓储基础，其余能力按领域逐步重建。
+
+## 导航
+
+- [订阅服务知识库](../apps/subscriptions/docs/README.md)：功能、实现、测试与领域设计。
+- [跨服务上下文地图](architecture/context-map.md)：职责、数据所有权和协作边界。
+- [知识库维护约定](conventions/documentation.md)：文档分类、状态、链接与 2000 行限制。
+- [旧项目归档](legacy-archive.md)：历史保留与恢复说明。
 
 ## 服务组织
 
